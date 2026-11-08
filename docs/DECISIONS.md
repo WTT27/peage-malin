@@ -63,3 +63,12 @@ Each important decision, with its reason. Newest at the bottom.
 - Sanef/SAPN and Vinci (ASF, Cofiroute, Escota): their websites block automated download
   (anti-bot page / JavaScript-only links) → Thomas downloads the class 1 PDFs manually once a year,
   Claude extracts them.
+
+## D-016 — Toll engine method (2026-11-08)
+- TomTom marks toll stretches; the engine finds priced stations close to the route (official dataset
+  + OpenStreetMap exits by number and name) near the start/end of each stretch and looks up the pair price.
+  Operator boundaries are handled by splitting; open barriers by fixed prices; Duplex A86 by time table.
+  A stretch that cannot be priced is always flagged, never counted as free.
+
+## D-017 — Alternatives = toll-free, TomTom alternatives, and per-stretch skip / leave early / join late (2026-11-08)
+- Built from 3 TomTom legs (normal / toll-free / normal). ~20–30 TomTom requests per trip (free quota 2,500/day).

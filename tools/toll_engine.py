@@ -11,7 +11,7 @@ For each TomTom TOLL_ROAD section:
 import json, math, sys, urllib.request, urllib.parse, datetime, bisect
 
 IDX = json.load(open('data/tolls/index.json'))
-STATIONS, PRICES = IDX['stations'], IDX['prices']
+STATIONS, PRICES, FIXED = IDX['stations'], IDX['prices'], IDX.get('fixed', {})
 DUPLEX = json.load(open('data/tolls/duplex_a86.json'))
 DEPART = datetime.datetime.now()
 R_END = 3.0      # km: max distance between a section end and its station
@@ -71,56 +71,99 @@ def duplex_price(poly, when):
     return t[row][i], f'Duplex A86 {a}->{b} ({row}, {when:%H:%M})'
 
 
-def price_section(poly, when=None):
-    p_in, p_out = poly[0], poly[-1]
-    dp = duplex_price(poly, when or DEPART)
+def fixed_price(f, when):
+    if 'MONTESSON' in f['name'].upper() and when.weekday() < 5 and when.date().isoformat() not in DUPLEX['holidays_2026']:
+        h = when.hour + when.minute / 60
+        if 10 <= h < 16 or h >= 21 or h < 6:
+            return 6.6          # reduced rate (SAPN grid note)
+    return f['price']
+
+
+def locate(pts, cum, lo, hi, maxd=0.8):
+    """Stations close to route points pts[lo:hi]; returns {key: (dist_km, position_km)}."""
+    seg = pts[lo:hi]
+    if not seg:
+        return {}
+    la = [p[0] for p in seg]; lo_ = [p[1] for p in seg]
+    box = (min(la) - 0.02, max(la) + 0.02, min(lo_) - 0.03, max(lo_) + 0.03)
+    out = {}
+    for key, s in list(STATIONS.items()) + list(FIXED.items()):
+        for p in s['points']:
+            if not (box[0] <= p[0] <= box[1] and box[2] <= p[1] <= box[3]):
+                continue
+            best = min(((km(p, seg[i]), i) for i in range(0, len(seg), 2)))
+            if best[0] <= maxd and (key not in out or best[0] < out[key][0]):
+                out[key] = (best[0], cum[lo + best[1]])
+    return out
+
+
+def price_section(pts, cum, i0, i1, when=None):
+    when = when or DEPART
+    poly = pts[i0:i1 + 1]
+    dp = duplex_price(poly, when)
     if dp and dp[0] != 'missing':
         return dp[0], [('COFIROUTE', dp[1], '', dp[0])]
-    ins, outs = near(p_in, R_END), near(p_out, R_END)
+    s0, s1 = cum[i0], cum[i1]
+    lo = next((i for i in range(i0, -1, -1) if cum[i] < s0 - 6), 0)
+    hi = next((i for i in range(i1, len(pts)) if cum[i] > s1 + 6), len(pts) - 1)
+    near_ = locate(pts, cum, lo, hi + 1)
+    ins = [(k, d, pos) for k, (d, pos) in near_.items() if k in STATIONS and s0 - 6 <= pos <= min(s1, s0 + 15)]
+    outs = [(k, d, pos) for k, (d, pos) in near_.items() if k in STATIONS and max(s0, s1 - 15) <= pos <= s1 + 6]
+    # route starting/ending right on the motorway (planner legs): accept the station nearest to that end
+    if i0 == 0:
+        ins += [(k, d, s0) for d, k in near(pts[0], R_END) if not any(k == x[0] for x in ins)]
+    if i1 >= len(pts) - 1:
+        outs += [(k, d, s1) for d, k in near(pts[-1], R_END) if not any(k == x[0] for x in outs)]
     best = None
-    for di, ki in ins:
-        for do, ko in outs:
-            si, so = STATIONS[ki], STATIONS[ko]
-            if si['op'] != so['op'] or ki == ko:
+    for ki, di, pi in ins:
+        si = STATIONS[ki]
+        for ko, do, po in outs:
+            so = STATIONS[ko]
+            if si['op'] != so['op'] or ki == ko or po <= pi:
                 continue
             p = price(si['op'], si['name'], so['name'])
-            if p is not None and (best is None or di + do < best[0]):
-                best = (di + do, p, [(si['op'], si['name'], so['name'], p)])
+            if p is None:
+                continue
+            score = abs(pi - s0) + abs(po - s1) + 3 * (di + do)
+            if best is None or score < best[0]:
+                best = (score, p, [(si['op'], si['name'], so['name'], p)])
     if best:
         return best[1], best[2]
-    # operator boundary split
-    along = []
-    for key, s in STATIONS.items():
-        if s['points'] and any(route_dist(poly, pt) <= R_ROUTE for pt in s['points'][:4]):
-            along.append(key)
-    for di, ki in ins:
+    # operator boundary split: entry(op1) -> X(op1) | Y(op2) -> exit(op2)
+    inner = [(k, d, pos) for k, (d, pos) in near_.items() if k in STATIONS and s0 <= pos <= s1 and d < 0.6]
+    for ki, di, pi in ins:
         si = STATIONS[ki]
-        for do, ko in outs:
+        for ko, do, po in outs:
             so = STATIONS[ko]
             if si['op'] == so['op']:
                 continue
-            for kx in along:
+            for kx, dx, px in inner:
                 sx = STATIONS[kx]
-                if sx['op'] != si['op']:
+                if sx['op'] != si['op'] or px <= pi:
                     continue
                 p1 = price(si['op'], si['name'], sx['name'])
                 if p1 is None:
                     continue
-                for ky in along:
+                for ky, dy, py in inner:
                     sy = STATIONS[ky]
-                    if sy['op'] != so['op']:
-                        continue
-                    if min(km(a, b) for a in sx['points'] for b in sy['points']) > 2:
+                    if sy['op'] != so['op'] or abs(py - px) > 3 or py >= po:
                         continue
                     p2 = price(so['op'], sy['name'], so['name'])
-                    if p2 is not None:
-                        cand = (di + do, p1 + p2, [(si['op'], si['name'], sx['name'], p1),
-                                                   (so['op'], sy['name'], so['name'], p2)])
-                        if best is None or cand[0] < best[0]:
-                            best = cand
+                    if p2 is None:
+                        continue
+                    score = abs(pi - s0) + abs(po - s1) + 3 * (di + do) + abs(py - px)
+                    if best is None or score < best[0]:
+                        best = (score, p1 + p2, [(si['op'], si['name'], sx['name'], p1),
+                                                 (so['op'], sy['name'], so['name'], p2)])
     if best:
         return best[1], best[2]
-    return None, {'entry_candidates': ins[:5], 'exit_candidates': outs[:5]}
+    # open-system barriers on the stretch
+    bars = [(pos, k) for k, (d, pos) in near_.items() if k in FIXED and s0 - 1 <= pos <= s1 + 1 and d < 0.3]
+    if bars:
+        det = [(FIXED[k]['op'], FIXED[k]['name'], '(barrière)', fixed_price(FIXED[k], when)) for _, k in sorted(bars)]
+        return sum(x[3] for x in det), det
+    return None, {'entry_candidates': sorted((round(d, 2), k) for k, d, _ in ins)[:5],
+                  'exit_candidates': sorted((round(d, 2), k) for k, d, _ in outs)[:5]}
 
 
 def tomtom_route(orig, dest, key, extra=''):
@@ -129,14 +172,22 @@ def tomtom_route(orig, dest, key, extra=''):
     return json.load(urllib.request.urlopen(url, timeout=60))['routes'][0]
 
 
-def price_route(route):
+def price_route(route, depart=None):
     pts = [(p['latitude'], p['longitude']) for leg in route['legs'] for p in leg['points']]
     total, details, unpriced = 0.0, [], []
+    tt = route['summary']['travelTimeInSeconds']
+    cum = [0.0]
+    for a, b in zip(pts, pts[1:]):
+        cum.append(cum[-1] + km(a, b))
     for s in route.get('sections', []):
         if s['sectionType'] != 'TOLL_ROAD':
             continue
         poly = pts[s['startPointIndex']:s['endPointIndex'] + 1]
-        p, info = price_section(poly)
+        i0, i1 = s['startPointIndex'], s['endPointIndex']
+        if cum[i1] - cum[i0] < 1.5 and (i0 == 0 or i1 >= len(pts) - 1):
+            continue   # snapping artefact: leg starts/ends on the motorway next to the interchange
+        when = (depart or DEPART) + datetime.timedelta(seconds=tt * s['startPointIndex'] / max(1, len(pts) - 1))
+        p, info = price_section(pts, cum, s['startPointIndex'], s['endPointIndex'], when)
         if p is None:
             unpriced.append({'from': poly[0], 'to': poly[-1], 'info': info})
         else:

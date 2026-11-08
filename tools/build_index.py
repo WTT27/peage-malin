@@ -130,7 +130,17 @@ def main():
         for (a, b), p in pairs.items():
             tab[f'{a}|{b}'] = p
             tab.setdefault(f'{b}|{a}', p)
-    json.dump({'stations': stations, 'prices': prices}, open(ROOT + 'index.json', 'w'), ensure_ascii=False)
+    fixed = {}
+    for op, f in [('SAPN', 'sapn.json'), ('SANEF', 'sanef.json')]:
+        for x in json.load(open(ROOT + f)).get('fixed', []):
+            pts = []
+            for v in variants(x['station']):
+                pts += geo.get(v, [])
+            fixed[f"{op}|FIXED|{x['station']}"] = {'op': op, 'name': x['station'], 'price': x['price'],
+                                                  'points': sorted({(a, b) for a, b, _ in pts})}
+            if not pts:
+                missing.append(f"{op}|FIXED|{x['station']}")
+    json.dump({'stations': stations, 'prices': prices, 'fixed': fixed}, open(ROOT + 'index.json', 'w'), ensure_ascii=False)
     by_op = defaultdict(lambda: [0, 0])
     for k, s in stations.items():
         by_op[s['op']][0] += 1

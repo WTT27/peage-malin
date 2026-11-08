@@ -1,17 +1,19 @@
 # Progress
 
-## Current status — 2026-11-08
-Project defined. Feasibility study in progress: routing ✅ (TomTom main, Valhalla backup), diesel price ✅, toll data next.
+## Current status — 2026-11-08 (evening)
+Prototype (command-line, not yet an app) works end to end: TomTom routes → toll prices (SAPN, Sanef, Vinci,
+Cofiroute, APRR, AREA, Duplex A86) → energy cost (5008 / e-208) → alternatives (toll-free, skip / leave early /
+join late on each toll stretch) → recommendation with X €/h + sensitivity. Results: docs/results/.
 
 ## Roadmap
 
 | Step | Content | Status |
 |---|---|---|
 | 0 | Definition, documents | ✅ done |
-| 1 | Feasibility study: free routing sources, French toll price data, fuel prices | 🔄 in progress (routing ✅) |
-| 2 | Toll cost of one route (F1), checked on the 3 test trips | — |
-| 3 | Alternatives + cost/duration chart (F2) | — |
-| 4 | Value-of-time recommendation (F3) | — |
+| 1 | Feasibility study: free routing sources, French toll price data, fuel prices | ✅ done |
+| 2 | Toll cost of one route (F1), checked on the 3 test trips | ✅ prototype (Thomas: "numbers seem quite OK") |
+| 3 | Alternatives + cost/duration chart (F2) | 🔄 alternatives ✅ (CLI table), chart → in the app |
+| 4 | Value-of-time recommendation (F3) | ✅ prototype + sensitivity 5–50 €/h |
 | 5 | Google Maps hand-off + phone install (F4) | — |
 | 6 | "While driving" re-check (F5) | — |
 | 7 | Western Europe | — |
@@ -27,4 +29,8 @@ Project defined. Feasibility study in progress: routing ✅ (TomTom main, Valhal
 | OPEN-5 | e-208 version / usable battery capacity (year of the car?) | waiting for Thomas |
 
 ## Known limitations
+- A few variants crossing the Cofiroute/Vinci boundary at Tours are still unpriced (flagged "(!)").
+- Escota, Arcos, A86 Duplex reverse direction (Vélizy→Rueil/Vaucresson) not encoded yet.
+- e-208 charging time is a simple model (45 kW average, 10 min per stop, 10→80 %); no charger location yet.
+- Legs 2 and 3 of partial-toll variants use current traffic, not traffic at the predicted time.
 - Toll prices change every 1 February → yearly data refresh needed.

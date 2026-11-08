@@ -1,0 +1,153 @@
+################ Demangevelle — diesel — vendredi 13/11 08:00
+  Itinéraire                                              km    durée   péage  énergie  total € coût géné.
+· Tronçon 2: éviter le tronçon                           446   4 h 12   26.00    59.14    85.14     127.07
+  Le plus rapide                                         430   4 h 12   36.40    57.00    93.40     135.42
+  Tronçon 3: sortir à CHAUMONT-SEMOUTIERS                434   4 h 26   35.40    57.56    92.96     137.22
+  Tronçon 3: entrer à MAROLLES-SUR-SEINE                 432   4 h 26   32.40    57.22    89.62     133.99
+  Tronçon 1: éviter le tronçon                           434   4 h 27   32.00    57.53    89.53     134.02
+· Tronçon 3: sortir à SAINT THIBAULT                     439   4 h 58   26.80    58.23    85.03     134.76
+· Tronçon 3: entrer à SAINT THIBAULT                     434   5 h 02   25.60    57.53    83.13     133.50
+  Alternative TomTom 2                                   516   5 h 21   25.20    68.46    93.66     147.12
+  Alternative TomTom 1                                   515   5 h 23   27.60    68.32    95.92     149.83
+· Tronçon 3: sortir à MAROLLES-SUR-SEINE                 446   5 h 27   21.00    59.21    80.21     134.76
+· Tronçon 3: entrer à CHAUMONT-SEMOUTIERS                448   5 h 38   17.90    59.40    77.30     133.60
+· Tronçon 3: éviter le tronçon                           428   5 h 38   13.40    56.75    70.15     126.45
+★ Sans péage                                             427   6 h 03    0.00    56.63    56.63     117.14
+
+★ Recommandé (5008 diesel, 10 €/h): Sans péage — +112 min, économie 28.51 € vs le plus rapide
+Sensibilité (valeur de l'heure -> choix):
+     5 €/h: Sans péage (6 h 03, 56.63 €)
+    10 €/h: Sans péage (6 h 03, 56.63 €)
+    15 €/h: Sans péage (6 h 03, 56.63 €)
+    20 €/h: Tronçon 2: éviter le tronçon (4 h 12, 85.14 €)
+    30 €/h: Tronçon 2: éviter le tronçon (4 h 12, 85.14 €)
+    50 €/h: Tronçon 2: éviter le tronçon (4 h 12, 85.14 €)
+(23 TomTom requests)
+################ Bordeaux — diesel — vendredi 13/11 08:00
+  Itinéraire                                              km    durée   péage  énergie  total € coût géné.
+· Tronçon 1: entrer à 21Maresché                         637   5 h 48   48.90    84.42   133.32     191.25
+  Le plus rapide                                         637   5 h 54   49.70    84.42   134.12     193.15
+  Tronçon 1: sortir à TOURS CENTRE (SAINT CHRISTOPHE)    634   6 h 00   49.70    84.11   133.81     193.76 (!)
+· Tronçon 1: sortir à PARIGNE-L'EVEQUE                   632   6 h 19   40.30    83.79   124.09     187.25
+  Tronçon 1: entrer à PARIGNE-L'EVEQUE                   643   6 h 20   43.40    85.26   128.66     192.08
+· Tronçon 2: sortir à 26Châtellerault nord               618   6 h 22   24.00    81.97   105.97     169.57
+  Tronçon 2: entrer à 26Châtellerault nord               640   6 h 24   39.60    84.92   124.52     188.59
+  Tronçon 2: sortir à 30Poitiers sud                     654   6 h 26   32.90    86.67   119.57     183.90
+  Tronçon 2: sortir à SAINTES                            648   6 h 26   45.60    85.88   131.48     195.85
+  Tronçon 1: sortir à 21Maresché                         638   6 h 29   39.00    84.57   123.57     188.45
+  Tronçon 1: entrer à TOURS CENTRE (SAINT CHRISTOPHE)    637   6 h 34   41.00    84.48   125.48     191.19
+  Tronçon 2: entrer à 30Poitiers sud                     643   6 h 41   35.90    85.25   121.15     188.03
+  Alternative TomTom 1                                   658   6 h 43   20.20    87.28   107.48     174.73
+  Tronçon 1: éviter le tronçon                           627   6 h 47   34.90    83.17   118.07     185.93
+  Alternative TomTom 2                                   657   6 h 49   42.60    87.13   129.73     197.88 (!)
+· Tronçon 2: éviter le tronçon                           622   6 h 57   14.80    82.54    97.34     166.87
+  Tronçon 2: entrer à SAINTES                            643   7 h 31   26.70    85.23   111.93     187.02
+★ Sans péage                                             592   7 h 31    0.00    78.52    78.52     153.67
+
+★ Recommandé (5008 diesel, 10 €/h): Sans péage — +103 min, économie 54.81 € vs le plus rapide
+Sensibilité (valeur de l'heure -> choix):
+     5 €/h: Sans péage (7 h 31, 78.52 €)
+    10 €/h: Sans péage (7 h 31, 78.52 €)
+    15 €/h: Sans péage (7 h 31, 78.52 €)
+    20 €/h: Sans péage (7 h 31, 78.52 €)
+    30 €/h: Tronçon 2: sortir à 26Châtellerault nord (6 h 22, 105.97 €)
+    50 €/h: Tronçon 1: entrer à 21Maresché (5 h 48, 133.32 €)
+(32 TomTom requests)
+################ Brive — diesel — vendredi 13/11 08:00
+  Itinéraire                                              km    durée   péage  énergie  total € coût géné.
+· Le plus rapide                                         539   5 h 00   20.20    71.53    91.73     141.81
+· Tronçon 2: sortir à LAMOTTE BEUVRON                    540   5 h 06   17.70    71.60    89.30     140.33
+· Tronçon 1: éviter le tronçon                           543   5 h 18   17.20    72.06    89.26     142.30
+· Tronçon 2: entrer à ARTENAY                            546   5 h 18   15.20    72.45    87.65     140.73
+· Tronçon 2: entrer à ORLEANS-CENTRE                     547   5 h 26   12.00    72.59    84.59     138.99
+· Tronçon 2: sortir à ORLEANS-CENTRE                     540   5 h 29   11.60    71.62    83.22     138.02
+· Tronçon 2: sortir à ARTENAY                            523   5 h 48    2.80    69.36    72.16     130.13
+  Tronçon 2: entrer à LAMOTTE BEUVRON                    548   5 h 50    6.30    72.61    78.91     137.19
+★ Sans péage                                             518   5 h 59    0.00    68.72    68.72     128.61
+  Tronçon 2: éviter le tronçon                           543   6 h 00    3.00    72.02    75.02     134.97
+  Alternative TomTom 1                                   657   6 h 01   13.40    87.14   100.54     160.68 (!)
+  Alternative TomTom 2                                   603   6 h 15   27.30    79.92   107.22     169.77
+
+★ Recommandé (5008 diesel, 10 €/h): Sans péage — +59 min, économie 23.01 € vs le plus rapide
+Sensibilité (valeur de l'heure -> choix):
+     5 €/h: Sans péage (5 h 59, 68.72 €)
+    10 €/h: Sans péage (5 h 59, 68.72 €)
+    15 €/h: Sans péage (5 h 59, 68.72 €)
+    20 €/h: Tronçon 2: sortir à ARTENAY (5 h 48, 72.16 €)
+    30 €/h: Le plus rapide (5 h 00, 91.73 €)
+    50 €/h: Le plus rapide (5 h 00, 91.73 €)
+(20 TomTom requests)
+################ Demangevelle — ev — vendredi 13/11 08:00
+  Itinéraire                                              km    durée   péage  énergie  total € coût géné.
+· Le plus rapide                                         430   5 h 38   36.40    24.16    60.56     116.97
+· Tronçon 3: entrer à MAROLLES-SUR-SEINE                 432   5 h 49   32.40    23.84    56.24     114.47
+  Tronçon 3: sortir à CHAUMONT-SEMOUTIERS                434   5 h 51   35.40    24.17    59.57     118.00
+· Tronçon 1: éviter le tronçon                           434   5 h 53   32.00    24.23    56.23     115.08
+· Tronçon 3: entrer à SAINT THIBAULT                     434   6 h 04   25.60    22.53    48.13     108.77
+  Tronçon 3: sortir à SAINT THIBAULT                     439   6 h 04   26.80    23.12    49.92     110.61
+· Tronçon 3: éviter le tronçon                           428   6 h 25   13.40    20.15    33.55      97.69
+  Tronçon 3: sortir à MAROLLES-SUR-SEINE                 446   6 h 26   21.00    22.73    43.73     108.05
+  Tronçon 3: entrer à CHAUMONT-SEMOUTIERS                448   6 h 34   17.90    22.53    40.43     106.07
+  Alternative TomTom 2                                   474   6 h 43   16.20    26.14    42.34     109.45
+★ Sans péage                                             427   6 h 48    0.00    19.76    19.76      87.79
+  Alternative TomTom 1                                   515   7 h 02   27.60    31.90    59.50     129.78
+
+★ Recommandé (e-208, 10 €/h): Sans péage — +70 min, économie 40.80 € vs le plus rapide
+Sensibilité (valeur de l'heure -> choix):
+     5 €/h: Sans péage (6 h 48, 19.76 €)
+    10 €/h: Sans péage (6 h 48, 19.76 €)
+    15 €/h: Sans péage (6 h 48, 19.76 €)
+    20 €/h: Sans péage (6 h 48, 19.76 €)
+    30 €/h: Sans péage (6 h 48, 19.76 €)
+    50 €/h: Le plus rapide (5 h 38, 60.56 €)
+(23 TomTom requests)
+################ Bordeaux — ev — vendredi 13/11 08:00
+  Itinéraire                                              km    durée   péage  énergie  total € coût géné.
+· Tronçon 1: entrer à 21Maresché                         618   8 h 15   28.90    42.33    71.23     153.74
+  Tronçon 2: entrer à TOURS CENTRE (SORIGNY)             618   8 h 17   29.70    42.33    72.03     154.81 (!)
+· Tronçon 2: sortir à POITIERS NORD                      618   8 h 19   28.40    42.33    70.73     153.93
+  Tronçon 1: sortir à TOURS CENTRE (SAINT CHRISTOPHE)    615   8 h 24   29.70    41.72    71.42     155.40 (!)
+· Tronçon 2: sortir à 26Châtellerault nord               619   8 h 36   24.00    41.90    65.90     151.89
+· Tronçon 1: sortir à PARIGNE-L'EVEQUE                   613   8 h 36   20.30    40.62    60.92     146.93
+  Tronçon 1: entrer à PARIGNE-L'EVEQUE                   624   8 h 43   23.40    42.02    65.42     152.50
+· Tronçon 1: sortir à 21Maresché                         619   8 h 46   19.00    40.95    59.95     147.61
+· Tronçon 1: éviter le tronçon                           608   8 h 46   14.90    39.34    54.24     141.96
+  Tronçon 2: entrer à 26Châtellerault nord               621   8 h 47   19.60    41.62    61.22     149.09
+  Tronçon 1: entrer à TOURS CENTRE (SAINT CHRISTOPHE)    618   8 h 51   21.00    40.95    61.95     150.45
+  Tronçon 2: sortir à TOURS CENTRE (SORIGNY)             624   8 h 53   19.10    41.70    60.80     149.58 (!)
+  Alternative TomTom 1                                   616   8 h 56   48.30    40.62    88.92     178.23
+  Tronçon 2: entrer à POITIERS NORD                      625   9 h 03   16.70    41.55    58.25     148.67
+  Tronçon 2: éviter le tronçon                           623   9 h 06   14.80    41.13    55.93     146.99
+★ Sans péage                                             592   9 h 07    0.00    36.22    36.22     127.32
+
+★ Recommandé (e-208, 10 €/h): Sans péage — +52 min, économie 35.01 € vs le plus rapide
+Sensibilité (valeur de l'heure -> choix):
+     5 €/h: Sans péage (9 h 07, 36.22 €)
+    10 €/h: Sans péage (9 h 07, 36.22 €)
+    15 €/h: Sans péage (9 h 07, 36.22 €)
+    20 €/h: Sans péage (9 h 07, 36.22 €)
+    30 €/h: Sans péage (9 h 07, 36.22 €)
+    50 €/h: Tronçon 1: entrer à 21Maresché (8 h 15, 71.23 €)
+(32 TomTom requests)
+################ Brive — ev — vendredi 13/11 08:00
+  Itinéraire                                              km    durée   péage  énergie  total € coût géné.
+· Le plus rapide                                         520   6 h 51   13.80    32.63    46.43     114.98
+· Tronçon 1: sortir à SALBRIS                            521   6 h 55   11.60    32.31    43.91     113.05
+· Tronçon 1: sortir à OLIVET                             523   7 h 04    8.60    32.22    40.82     111.53
+  Tronçon 1: entrer à GIDY                               527   7 h 07   10.00    32.79    42.79     114.02
+· Tronçon 1: sortir à GIDY                               522   7 h 21    3.20    31.48    34.68     108.21
+★ Sans péage                                             506   7 h 27    0.00    28.70    28.70     103.21
+  Tronçon 1: entrer à SALBRIS                            529   7 h 29    3.20    32.19    35.39     110.16
+  Tronçon 1: éviter le tronçon                           522   7 h 30    0.00    31.01    31.01     105.95
+  Alternative TomTom 2                                   589   8 h 14   24.00    37.61    61.61     144.00
+  Alternative TomTom 1                                   657   8 h 44   13.40    46.56    59.96     147.29 (!)
+
+★ Recommandé (e-208, 10 €/h): Sans péage — +36 min, économie 17.73 € vs le plus rapide
+Sensibilité (valeur de l'heure -> choix):
+     5 €/h: Sans péage (7 h 27, 28.70 €)
+    10 €/h: Sans péage (7 h 27, 28.70 €)
+    15 €/h: Sans péage (7 h 27, 28.70 €)
+    20 €/h: Sans péage (7 h 27, 28.70 €)
+    30 €/h: Tronçon 1: sortir à SALBRIS (6 h 55, 43.91 €)
+    50 €/h: Le plus rapide (6 h 51, 46.43 €)
+(16 TomTom requests)
