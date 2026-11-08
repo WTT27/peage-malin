@@ -33,8 +33,12 @@ export function energy(c, v) {
   const kwh = c.mkm * v.kwhMotorway / 100 + (c.km - c.mkm) * v.kwhOther / 100;
   const home = Math.min(kwh, v.batteryKwh * 0.9);
   const extra = kwh - home;
-  const stops = extra > 0 ? Math.ceil(extra / (v.batteryKwh * 0.7)) : 0;
-  return { energy: home * v.homeEurKwh + extra * v.fastEurKwh, chargeMin: extra / v.chargeKw * 60 + stops * v.stopOverheadMin, kwh };
+  // fast charging: one stop can bring up to 80 % of the battery (e.g. 10 → 90 %); the part of a stop above 70 % of the
+  // battery (above ~80 % charge) is charged at half speed. No 10-minute jump for a slightly bigger need (Thomas, D-032).
+  const stops = extra > 0 ? Math.ceil(extra / (v.batteryKwh * 0.8)) : 0;
+  const perStop = stops ? extra / stops : 0, slow = Math.max(0, perStop - v.batteryKwh * 0.7) * stops;
+  return { energy: home * v.homeEurKwh + extra * v.fastEurKwh,
+    chargeMin: (extra + slow) / v.chargeKw * 60 + stops * v.stopOverheadMin, kwh };
 }
 
 // readable station name: "CHAUFOUR N°15 à GAILLON N°17" → "Chaufour", "LILLE / DOURGES (péage de Fresnes)" → "Lille / Dourges",
@@ -542,11 +546,29 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
         out.push({ label: lab.charAt(0).toUpperCase() + lab.slice(1), pieces, kind: 'detour' });
       }
     }
+    // "motorway to X, then free roads" / "free roads to X, then motorway": combined with the options of the toll
+    // stretches they do not touch (Thomas: avoid the Duplex AND leave the A5 at exit 24 → both savings together)
     for (const e of escapes) {
-      const nm = cleanName(e.nd.name);
-      out.push(e.kind === 'sortie'
-        ? { label: `Autoroute jusqu'à ${nm}, puis routes gratuites`, pieces: [mw(0, e.nd.idx), { type: 'free', A: e.A, B: e.B }], kind: 'escape' }
-        : { label: `Routes gratuites jusqu'à ${nm}, puis autoroute`, pieces: [{ type: 'free', A: e.A, B: e.B }, mw(e.nd.idx, N)], kind: 'escape' });
+      const nm = cleanName(e.nd.name), X = e.nd.idx, isOut = e.kind === 'sortie';
+      const escLabel = isOut ? `autoroute jusqu'à ${nm}, puis routes gratuites` : `routes gratuites jusqu'à ${nm}, puis autoroute`;
+      const free = { type: 'free', A: e.A, B: e.B };
+      let cs = [[]];
+      perStretch.forEach((ps, k) => {
+        if (isOut ? ps.s1 > X : ps.s0 < X) return;           // only stretches entirely before (resp. after) X
+        const next = [];
+        for (const c of cs) for (const x of lists[k]) next.push([...c, { k, x }]);
+        cs = next.slice(0, 2000);
+      });
+      for (const c of cs) {
+        const pieces = [];
+        let cur = isOut ? 0 : X;
+        if (!isOut) pieces.push(free);
+        for (const { k, x } of c) { pieces.push(mw(cur, perStretch[k].s0), ...x.pieces); cur = perStretch[k].s1; }
+        if (isOut) pieces.push(mw(cur, X), free); else pieces.push(mw(cur, N));
+        const labs = c.filter(({ x }) => x.label).map(({ x }) => x.label);
+        const lab = (isOut ? [...labs, escLabel] : [escLabel, ...labs]).join(' + ');
+        out.push({ label: lab.charAt(0).toUpperCase() + lab.slice(1), pieces, kind: 'escape' });
+      }
     }
     const list = [];
     for (const c of out) { const e = evalPieces(c.pieces); if (e) list.push({ ...c, ...e }); }

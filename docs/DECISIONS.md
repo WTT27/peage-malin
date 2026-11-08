@@ -220,3 +220,12 @@ Each important decision, with its reason. Newest at the bottom.
   3. Toll-free option: a note asks to switch on "Éviter les péages" in Google Maps (no documented URL parameter).
 - Test (proxy): Demangevelle 18 Dec 09:00 — 8/8 options followed with the expected tolls; Lille 8/8 (one +0.50 €);
   Bordeaux 9/11 (toll-free on 640 km cannot be held by 9 stops → note; Auvours +1 €).
+
+## D-032 — Escapes combined with other stretches; smoother e-208 charging model (2026-11-08)
+- Thomas (e-208, Demangevelle): "+2 min −4.52 € (leave the A5 at exit 24) and +5 min −8.01 € (A12 instead of the
+  Duplex) are independent — why no combination?" Cause: "motorway to X then free roads" / "free roads to X then
+  motorway" options were standalone. Now each is combined with the options of the toll stretches it does not touch.
+- The combination first came out at +17 min: the charging model counted one extra 10-minute stop when the fast-charge
+  need went from 31.9 to 32.8 kWh (threshold 70 % of the battery per stop). That threshold also made the "+2 min" of the
+  exit-24 option artificial (it saved a whole stop). New model: one stop can bring up to 80 % of the battery; the part
+  above 70 % is charged at half speed. Result: Duplex by A12 + A5 to Chaumont then free roads = +16 min −12.52 €.
