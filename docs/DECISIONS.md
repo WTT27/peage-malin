@@ -46,3 +46,20 @@ Each important decision, with its reason. Newest at the bottom.
 
 ## D-012 — Diesel price fetched live from government open data (2026-11-08)
 - National average on 2026-11-08: **2,21 €/L** (9,023 stations). Earlier 1,65 €/L figure was wrong.
+
+## D-013 — e-208 consumption by road type (2026-11-08)
+- 2022 model, ~46 kWh usable. Motorway at 110 km/h: **18 kWh/100 km**; other roads: 15 kWh/100 km.
+- Source: Automobile Propre supertest e-208 2022 measured 17,1 kWh/100 km at steady 110 km/h
+  (mild weather); Izi by EDF reports 19,5 at 120 km/h average. 18 is a realistic middle; Thomas
+  estimated ~20. Adjustable.
+
+## D-014 — Communication rule (2026-11-08)
+- Thomas does not read the docs; they are kept for traceability only. All results, questions and
+  decisions are reported in the terminal conversation.
+
+## D-015 — Toll price sources (2026-11-08)
+- Toll station locations: official ministry dataset (data.gouv.fr).
+- APRR/AREA: ready-made CSV on data.gouv.fr (2026 prices).
+- Sanef/SAPN and Vinci (ASF, Cofiroute, Escota): their websites block automated download
+  (anti-bot page / JavaScript-only links) → Thomas downloads the class 1 PDFs manually once a year,
+  Claude extracts them.

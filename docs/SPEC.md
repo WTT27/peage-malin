@@ -29,7 +29,7 @@ Vehicle class: **normal car only** (French toll class 1).
 
 | Vehicle | Energy | Parameters needed |
 |---|---|---|
-| Peugeot e-208 | Electric | 15 kWh/100 km (mixed roads); **max 110 km/h** (durations recomputed with this cap) |
+| Peugeot e-208 (2022, 50 kWh gross / ~46 kWh usable) | Electric | **18 kWh/100 km on motorway at 110 km/h**, 15 kWh/100 km on other roads; **max 110 km/h** |
 | Peugeot 5008 | Diesel | 6 L/100 km; normal speed limits; diesel price fetched live from the free French government fuel price data (≈2,21 €/L on 2026-11-08) |
 
 **e-208 energy cost model:**
@@ -37,7 +37,8 @@ Vehicle class: **normal car only** (French toll class 1).
   Home price ≈ **0,14 €/kWh** (Aug 2026 grid: blue HC 0,1356, white HC 0,1536, weighted by
   ~300 blue / ~43 white days). Value editable.
 - Energy beyond the home charge is bought on motorway fast chargers at **0,54 €/kWh**.
-- Battery usable capacity: **to confirm** (depends on e-208 version, ~46 or ~48 kWh).
+- Usable battery: ~46 kWh (2022 model) → roughly 250–300 km on home electricity.
+- Later: winter correction (consumption +15–30 % in cold weather).
 
 The user picks the vehicle before each search. Default values are proposed, user can edit.
 
@@ -83,13 +84,17 @@ From **Caillouet-Orgeville (27)** to:
 For each, results will be compared against the official operator toll calculators
 and against Google Maps durations.
 
-## 7. Out of scope (for now)
+## 7. Future ideas (backlog)
+- **Breaks on long trips**: add time for charging / lunch / toilet breaks, and suggest *where*
+  (e.g. charging stations for the e-208, rest areas). Breaks also change the cost (charging price).
+
+## 8. Out of scope (for now)
 
 - Trucks, motorbikes, campers, caravans.
 - Toll subscriptions / badge discounts (may be added later).
 - Charging-stop planning for the e-208 (energy *cost* is computed; *where* to charge
   is left to Google Maps / other apps for now).
 
-## 8. Open questions
+## 9. Open questions
 
 See `PROGRESS.md` → "Open questions".
