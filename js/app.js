@@ -140,9 +140,10 @@ function routeCard(e, { compact = false } = {}) {
   div.className = 'route' + (state.selected === e ? ' sel' : '');
   const badges = (e.best ? '<span class="badge best">⭐ Meilleur compromis</span> ' : '') +
     (e.freeWin ? '<span class="badge free">🟢 Gain gratuit</span> ' : '');
-  const lost = e.dMin <= 0 ? 'même durée' : `+${Math.round(e.dMin)} min`;
+  const dm = Math.round(e.dMin);
+  const lost = dm === 0 ? 'même durée' : dm < 0 ? `${dm} min` : `+${dm} min`;
   div.innerHTML = `
-    <div class="head"><span class="save">${e.save > 0.004 ? '−' + eur(e.save) : 'référence'}</span><span class="lost">${lost}</span></div>
+    <div class="head"><span class="save">${e.isRef ? 'Le plus rapide' : '−' + eur(e.save)}</span><span class="lost">${lost}</span></div>
     ${badges ? `<div>${badges}</div>` : ''}
     <div class="label">${escapeHtml(e.label)}</div>
     <div class="meta">${hm(e.min)} · ${Math.round(e.km)} km · péages ${eur(e.toll)} · ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(e.energy)}${e.chargeMin ? ` · recharge ≈ ${Math.round(e.chargeMin)} min` : ''}</div>
@@ -157,13 +158,13 @@ function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<'
 
 function render() {
   const { eff, count, secs } = state.result;
-  const f0 = eff[0];
+  const f0 = eff.find((e) => e.isRef) || eff[0];
   const cheapest = eff.reduce((a, b) => (b.cost < a.cost ? b : a));
   const best = eff.find((e) => e.best);
   const wins = eff.filter((e) => e.freeWin);
   $('summary').innerHTML = `
     <h2>Le plus rapide : ${hm(f0.min)} · ${eur(f0.cost)}</h2>
-    <p class="hint" style="margin-top:0">dont péages ${eur(f0.toll)} — ${escapeHtml(f0.label)}</p>
+    <p class="hint" style="margin-top:0">dont péages ${eur(f0.toll)}, ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(f0.energy)}</p>
     <p>Économie maximale possible : <b>${eur(f0.cost - cheapest.cost)}</b> pour <b>+${Math.round(cheapest.min - f0.min)} min</b> (${escapeHtml(cheapest.label)}).</p>
     ${wins.length ? `<p>🟢 <b>Gain gratuit :</b> ${escapeHtml(wins[0].label)} — <b>−${eur(wins[0].save)}</b> pour ${Math.round(wins[0].dMin) <= 0 ? 'la même durée' : '+' + Math.round(wins[0].dMin) + ' min'}.</p>` : ''}
     ${best ? `<p>⭐ <b>Meilleur compromis :</b> ${escapeHtml(best.label)} — <b>−${eur(best.save)}</b> pour <b>+${Math.round(best.dMin)} min</b> (${Math.round(best.pSave * 100)} % de l'économie possible pour ${Math.round(best.pTime * 100)} % du temps en plus).</p>` : ''}`;
@@ -224,6 +225,17 @@ function renderChart() {
     $('list').children[idx]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }));
 }
+
+// Pre-filled trips from the URL: ?de=Maison&from=49.003,1.3155&a=Bordeaux&to=44.84,-0.58&veh=ev&go=1
+(() => {
+  const q = new URLSearchParams(location.search);
+  const pt = (s) => { const m2 = (s || '').match(/^(-?[\d.]+),(-?[\d.]+)$/); return m2 ? [+m2[1], +m2[2]] : null; };
+  if (pt(q.get('from'))) { state.from = pt(q.get('from')); $('from').value = q.get('de') || q.get('from'); }
+  if (pt(q.get('to'))) { state.to = pt(q.get('to')); $('to').value = q.get('a') || q.get('to'); }
+  if (q.get('veh') === 'ev' || q.get('veh') === 'diesel') document.querySelector(`#vehSeg button[data-v="${q.get('veh')}"]`).click();
+  if (q.get('quand')) $('when').value = q.get('quand');
+  if (q.get('go') === '1') loadTolls().then(() => $('form').requestSubmit());
+})();
 
 loadTolls().catch(() => showError('Impossible de charger les tarifs des péages'));
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

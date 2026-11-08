@@ -7,7 +7,7 @@ const R_END = 3.0;
 
 export async function loadTolls(url = 'data/tolls.json') {
   D = await (await fetch(url)).json();
-  D.st = D.stations.map(([op, name, points], i) => ({ id: i, op, name, points }));
+  D.st = D.stations.map(([op, name, points, locals], i) => ({ id: i, op, name, points, locals: locals || [] }));
   D.fx = D.fixed.map(([op, name, price, points], i) => ({ id: 'F' + i, op, name, price, points, fixed: true }));
   return D;
 }
@@ -167,8 +167,34 @@ export function stationsNear(pts, cum, i0, i1) {
         const d = km(p, seg[k]);
         if (d < best) { best = d; bi = k; }
       }
-      if (best < 0.4) { found.push({ pos: cum[i0 + bi], idx: i0 + bi, name: s.name }); break; }
+      if (best < 0.4) { found.push({ pos: cum[i0 + bi], idx: i0 + bi, name: s.name, local: s.locals[s.points.indexOf(p)] || null }); break; }
     }
   }
   return found.sort((a, b) => a.pos - b.pos);
+}
+
+// precomputed ordinary-road point of the closest station (within maxKm), or null
+export function nearestLocal(pt, maxKm = 3) {
+  let best = null, bd = maxKm;
+  for (const s of D.st) s.points.forEach((p, i) => {
+    const l = s.locals[i];
+    if (!l) return;
+    const d = km(pt, p);
+    if (d < bd) { bd = d; best = l; }
+  });
+  return best;
+}
+
+// Built-in ordinary-road point near a motorway point (precomputed from OpenStreetMap), or null
+export function builtinLocal(pt, maxKm = 4) {
+  let best = null, bd = Infinity;
+  for (const s of D.st) {
+    for (let i = 0; i < s.points.length; i++) {
+      const l = s.local[i];
+      if (!l) continue;
+      const d = km(pt, s.points[i]);
+      if (d < bd) { bd = d; best = l; }
+    }
+  }
+  return bd <= maxKm ? best : null;
 }
