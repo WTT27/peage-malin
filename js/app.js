@@ -1,5 +1,5 @@
 import { loadTolls, tollData } from './tolls.js';
-import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip } from './optimizer.js';
+import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName } from './optimizer.js';
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 
@@ -47,6 +47,11 @@ const load = (k, def) => { try { return JSON.parse(localStorage.getItem(k) || 'n
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
 const sgn = (v) => (v >= 0 ? '−' : '+') + eur(Math.abs(v));      // a saving shows as "−x €", an extra cost as "+x €"
 const energyWord = (veh) => (veh === 'ev' ? 'électricité' : 'gazole');
+// tolls actually paid on a route, readable: "Chaufour → Poissy 3,00 € · Barrière de Montesson 10,80 €"
+const tollsText = (details) => !details || !details.length ? 'aucun' : details.map((x) =>
+  /duplex/i.test(x.from) ? `Duplex A86 ${eur(x.price)}`
+    : !x.to || x.to === '(barrière)' ? `Barrière de ${prettyName(x.from)} ${eur(x.price)}`
+      : `${prettyName(x.from)} → ${prettyName(x.to)} ${eur(x.price)}`).join(' · ');
 const splitText = (e, veh) => `dont péages ${sgn(e.saveToll)} · ${energyWord(veh)} ${sgn(e.saveEnergy)}`;
 
 // places: [{name, pt}]
@@ -261,6 +266,7 @@ function routeCard(e, { compact = false } = {}) {
     ${badges ? `<div>${badges}</div>` : ''}
     <div class="label">${escapeHtml(e.label)}</div>
     ${e.isRef ? '' : `<div class="split">${splitText(e, state.result.vehKey)}</div>`}
+    <div class="split">Péages payés : ${escapeHtml(tollsText(e.details))}</div>
     <div class="meta">${hm(e.min)} · ${Math.round(e.km)} km · péages ${eur(e.toll)} · ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(e.energy)}${e.chargeMin ? ` · recharge ≈ ${Math.round(e.chargeMin)} min` : ''}</div>
     <div class="actions">
       <a class="gm" target="_blank" rel="noopener" href="${googleMapsUrl(o, d, e.via)}">Ouvrir dans Google Maps</a>
