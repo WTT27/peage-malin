@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Péage Malin</title>
+<meta name="description" content="Trouver les bons compromis entre péages, énergie et temps de trajet">
+<meta name="theme-color" content="#1d4ed8">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <h1>Péage Malin</h1>
+  <button id="btnSettings" class="icon-btn" aria-label="Réglages">⚙︎</button>
+</header>
+
+<main>
+  <form id="form" class="card" autocomplete="off">
+    <label class="field">
+      <span>Départ</span>
+      <div class="row">
+        <input id="from" type="text" placeholder="Ville, adresse…" required>
+        <button type="button" id="btnHere" class="small-btn" title="Ma position">📍</button>
+      </div>
+      <ul class="suggest" id="fromSuggest"></ul>
+    </label>
+    <label class="field">
+      <span>Arrivée</span>
+      <input id="to" type="text" placeholder="Ville, adresse…" required>
+      <ul class="suggest" id="toSuggest"></ul>
+    </label>
+    <div class="field">
+      <span>Véhicule</span>
+      <div class="seg" id="vehSeg">
+        <button type="button" data-v="diesel" class="on">5008 diesel</button>
+        <button type="button" data-v="ev">e-208</button>
+      </div>
+    </div>
+    <label class="field">
+      <span>Départ prévu</span>
+      <div class="row">
+        <input id="when" type="datetime-local">
+        <button type="button" id="btnNow" class="small-btn">Maintenant</button>
+      </div>
+    </label>
+    <button id="btnGo" class="primary" type="submit">Chercher les bons plans</button>
+  </form>
+
+  <section id="progress" class="card hidden" aria-live="polite">
+    <div class="bar"><div id="barFill"></div></div>
+    <p id="progressText">…</p>
+  </section>
+
+  <section id="error" class="card error hidden"></section>
+
+  <section id="results" class="hidden">
+    <div class="card" id="summary"></div>
+
+    <div class="card">
+      <h2>Combien de temps en plus j'accepte ?</h2>
+      <input id="budget" type="range" min="0" max="90" step="5" value="30">
+      <p id="budgetText" class="budget-text"></p>
+      <div id="budgetRoute"></div>
+    </div>
+
+    <div class="card">
+      <h2>Économie selon le temps perdu</h2>
+      <div id="chart"></div>
+      <p class="hint">Chaque point est un itinéraire « efficace » (aucun autre n'est à la fois plus rapide et moins cher). Touchez un point pour le voir.</p>
+    </div>
+
+    <div class="card">
+      <h2>Tous les bons itinéraires</h2>
+      <div id="list"></div>
+    </div>
+    <p class="hint center" id="footStats"></p>
+  </section>
+</main>
+
+<dialog id="settings">
+  <form method="dialog" class="settings">
+    <h2>Réglages</h2>
+    <label class="field"><span>Clé TomTom (gratuite)</span><input id="sKey" type="text" spellcheck="false"></label>
+    <h3>5008 diesel</h3>
+    <label class="field inline"><span>Consommation (L/100 km)</span><input id="sLper100" type="number" step="0.1"></label>
+    <label class="field inline"><span>Prix du gazole (€/L)</span><input id="sDiesel" type="number" step="0.01"></label>
+    <h3>e-208</h3>
+    <label class="field inline"><span>Autoroute à 110 (kWh/100 km)</span><input id="sKwhM" type="number" step="0.5"></label>
+    <label class="field inline"><span>Autres routes (kWh/100 km)</span><input id="sKwhO" type="number" step="0.5"></label>
+    <label class="field inline"><span>Batterie utile (kWh)</span><input id="sBatt" type="number" step="1"></label>
+    <label class="field inline"><span>Électricité maison (€/kWh)</span><input id="sHome" type="number" step="0.01"></label>
+    <label class="field inline"><span>Recharge rapide (€/kWh)</span><input id="sFast" type="number" step="0.01"></label>
+    <div class="row end">
+      <button value="cancel" class="small-btn">Annuler</button>
+      <button value="ok" id="sSave" class="primary small">Enregistrer</button>
+    </div>
+    <p class="hint">Tarifs péages classe 1 : <span id="dataVersion"></span></p>
+  </form>
+</dialog>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
