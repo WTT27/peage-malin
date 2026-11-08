@@ -14,3 +14,5 @@
 | Escota-Guide-tarifaire-2026.pdf | Escota (A8, A50, A51, A52, A57…) — not parsed yet (different layout) | same | 2026-11-08 |
 | A355-Guide-tarifaire-2026.pdf | Arcos A355 (Strasbourg west bypass) — not parsed yet | same | 2026-11-08 |
 | Tarifs-Duplex-2026.pdf | Duplex A86 tunnel (Rueil–Vélizy) — not parsed yet | same | 2026-11-08 |
+| osm_motorway_junctions_fr.json | OpenStreetMap motorway exits (France), used to locate interchanges by exit number | Overpass API, © OpenStreetMap contributors (ODbL) | 2026-11-08 |
+| osm_motorway_ways_fr.json | OpenStreetMap motorway ways (France), used to know which road an exit belongs to | Overpass API, © OpenStreetMap contributors (ODbL) | 2026-11-08 |

@@ -22,3 +22,14 @@
 - Vinci page 4 (A61/A62/A64/A65, Toulouse–Bayonne): 29 station names not recognised.
 - Vinci rectangular cross-network tables (pages 2, 8, 9) not parsed yet.
 - data.gouv.fr APRR CSV turned out messy (glued names) → replaced by the official APRR/AREA PDFs, parsed cleanly (APRR 177 stations / 21,505 pairs, AREA 51 / 955, 0 rejected lines).
+
+## First engine run on the test trips (2026-11-08, Sunday ~16:30, TomTom fastest route, 5008 profile)
+
+| Trip | Route | Toll stretches | Total |
+|---|---|---|---|
+| → Demangevelle | 430 km, 4 h 07 | SAPN Chaufour-Gaillon → Mantes 3,00 · Duplex A86 Vaucresson → Vélizy 8,40 (Sunday afternoon rate) · APRR Les Eprunes → Montigny-le-Roi 23,00 | **34,40 €** |
+| → Bordeaux | 633 km, 5 h 43 | Cofiroute A28 Alençon nord → Tours (St-Christophe) 14,80 · A10 Tours centre (Sorigny) → Virsac 34,90 | **49,70 €** |
+| → Brive | 539 km, 4 h 57 | SAPN Chaufour-Gaillon → Mantes 3,00 · Cofiroute A10/A71 Allainville → Vierzon nord 17,20 | **20,20 €** |
+
+Station location coverage: SAPN 21/28, Sanef 87/93, Vinci 223/351, APRR 159/177, AREA 41/51, Cofiroute 244/252.
+Still to check against the operators' own simulators / Thomas's real receipts.
