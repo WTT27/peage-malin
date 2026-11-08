@@ -10,3 +10,7 @@
 | aprr-TARIFS_APRR.pdf | APRR official class 1–5 list (entry, exit, km, prices), valid 1 Feb 2026, 300 pages | voyage.aprr.fr/tarifs-de-peage (direct download OK) | 2026-11-08 |
 | aprr-TARIFS_AREA.pdf | AREA official list, valid 1 Feb 2026 | same | 2026-11-08 |
 | aprr-2026-_Systemes_Ouverts_APRR-AREA.pdf | APRR/AREA open-system barriers, 1 page (not parsed yet) | same | 2026-11-08 |
+| Cofiroute-Guide-tarifaire-2026.pdf | Cofiroute full entry/exit list (A10 Paris–Tours, A11, A28, A71, A81, A85…), valid 1 Feb 2026 | vinci-autoroutes.com, downloaded manually by Thomas | 2026-11-08 |
+| Escota-Guide-tarifaire-2026.pdf | Escota (A8, A50, A51, A52, A57…) — not parsed yet (different layout) | same | 2026-11-08 |
+| A355-Guide-tarifaire-2026.pdf | Arcos A355 (Strasbourg west bypass) — not parsed yet | same | 2026-11-08 |
+| Tarifs-Duplex-2026.pdf | Duplex A86 tunnel (Rueil–Vélizy) — not parsed yet | same | 2026-11-08 |
