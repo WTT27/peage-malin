@@ -84,6 +84,12 @@
   <form method="dialog" class="settings">
     <h2>Réglages</h2>
     <label class="field"><span>Clé TomTom (gratuite)</span><input id="sKey" type="text" spellcheck="false"></label>
+    <label class="field"><span>Méthode de calcul</span>
+      <select id="sMode">
+        <option value="tomtom">Complète — tout vérifié avec TomTom (≈ 25 à 60 requêtes)</option>
+        <option value="valhalla">Économe — estimation gratuite, TomTom pour les meilleures (≈ 15 requêtes)</option>
+      </select>
+    </label>
     <h3>5008 diesel</h3>
     <label class="field inline"><span>Consommation (L/100 km)</span><input id="sLper100" type="number" step="0.1"></label>
     <label class="field inline"><span>Prix du gazole (€/L)</span><input id="sDiesel" type="number" step="0.01"></label>

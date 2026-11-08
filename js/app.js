@@ -13,6 +13,7 @@ function loadSettings() {
   return { diesel: { ...DEFAULT_VEHICLES.diesel, ...(s.diesel || {}) }, ev: { ...DEFAULT_VEHICLES.ev, ...(s.ev || {}) } };
 }
 let V = loadSettings();
+const engineMode = () => { try { return localStorage.getItem('engineMode') || 'tomtom'; } catch { return 'tomtom'; } };
 const saveSettings = () => { try { localStorage.setItem('vehicles', JSON.stringify(V)); } catch { /* ignore */ } };
 
 // key passed once in the URL fragment: …/#key=XXXX  (never sent to any server)
@@ -24,6 +25,7 @@ $('btnSettings').onclick = () => {
   $('sLper100').value = V.diesel.lPer100; $('sDiesel').value = V.diesel.eurPerL;
   $('sKwhM').value = V.ev.kwhMotorway; $('sKwhO').value = V.ev.kwhOther; $('sBatt').value = V.ev.batteryKwh;
   $('sHome').value = V.ev.homeEurKwh; $('sFast').value = V.ev.fastEurKwh;
+  $('sMode').value = engineMode();
   const dv = tollData(); $('dataVersion').textContent = dv ? dv.note : '';
   $('settings').showModal();
 };
@@ -34,6 +36,7 @@ $('settings').addEventListener('close', () => {
   V.diesel.lPer100 = num('sLper100', V.diesel.lPer100); V.diesel.eurPerL = num('sDiesel', V.diesel.eurPerL);
   V.diesel.priceSetByUser = true;
   V.ev.kwhMotorway = num('sKwhM', V.ev.kwhMotorway); V.ev.kwhOther = num('sKwhO', V.ev.kwhOther);
+  try { localStorage.setItem('engineMode', $('sMode').value); } catch { /* ignore */ }
   V.ev.batteryKwh = num('sBatt', V.ev.batteryKwh); V.ev.homeEurKwh = num('sHome', V.ev.homeEurKwh); V.ev.fastEurKwh = num('sFast', V.ev.fastEurKwh);
   saveSettings();
 });
@@ -118,11 +121,11 @@ $('form').addEventListener('submit', async (ev) => {
     }
     const depart = $('when').value ? new Date($('when').value) : new Date();
     const t0 = Date.now();
-    stats.api = 0; stats.cached = 0;
+    stats.api = 0; stats.cached = 0; stats.valhalla = 0;
     const res = await analyse(o, d, v, depart, (f, txt) => {
       $('barFill').style.width = `${Math.round(f * 100)}%`;
       $('progressText').textContent = txt;
-    });
+    }, { estimator: engineMode() });
     state.result = { ...res, o, d, v, secs: Math.round((Date.now() - t0) / 1000) };
     render();
   } catch (e) {
@@ -174,8 +177,10 @@ function render() {
   renderBudget();
   renderChart();
   renderList();
-  $('footStats').textContent = `${count} itinéraires estimés, ${state.result.confirmed} tronçons vérifiés avec TomTom, ${eff.length} retenus · ` +
-    `${stats.api} requêtes TomTom${stats.cached ? ` (+${stats.cached} déjà en mémoire)` : ''} · ${secs} s`;
+  const { mode, notice } = state.result;
+  $('footStats').textContent = `${notice ? notice + ' · ' : ''}Méthode ${mode === 'valhalla' ? 'économe' : 'complète'} · ` +
+    `${count} itinéraires évalués, ${eff.length} retenus · ${stats.api} requêtes TomTom` +
+    `${stats.cached ? ` (+${stats.cached} déjà en mémoire)` : ''}${stats.valhalla ? ` · ${stats.valhalla} estimations gratuites` : ''} · ${secs} s`;
   $('results').classList.remove('hidden');
   $('results').scrollIntoView({ behavior: 'smooth' });
 }
@@ -198,7 +203,7 @@ function renderList() {
 
 function renderChart() {
   const { eff } = state.result;
-  const W = 640, H = 300, L = 48, B = 36, Rm = 14, T = 14;
+  const W = 640, H = 340, L = 70, B = 46, Rm = 16, T = 16;
   const maxX = Math.max(10, ...eff.map((e) => e.dMin)), maxY = Math.max(1, ...eff.map((e) => e.save));
   const x = (v) => L + (W - L - Rm) * Math.max(0, v) / maxX;
   const y = (v) => H - B - (H - B - T) * Math.max(0, v) / maxY;
@@ -206,18 +211,18 @@ function renderChart() {
   const c = (n) => css.getPropertyValue(n).trim();
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Économie en euros selon les minutes perdues">`;
   const ticks = (max, n) => { const step = Math.max(1, Math.ceil(max / n / 5) * 5); const out = []; for (let v = 0; v <= max + 1e-9; v += step) out.push(v); return out; };
-  for (const v of ticks(maxX, 6)) s += `<line x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}" stroke="${c('--line')}"/><text x="${x(v)}" y="${H - B + 18}" fill="${c('--muted')}" font-size="12" text-anchor="middle">+${v}′</text>`;
+  for (const v of ticks(maxX, 6)) s += `<line x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${H - B}" stroke="${c('--line')}"/><text x="${x(v)}" y="${H - B + 28}" fill="${c('--muted')}" font-size="20" text-anchor="middle">+${v}′</text>`;
   const ystep = maxY > 40 ? 10 : 5;
-  for (let v = 0; v <= maxY + 1e-9; v += ystep) s += `<line x1="${L}" x2="${W - Rm}" y1="${y(v)}" y2="${y(v)}" stroke="${c('--line')}"/><text x="${L - 6}" y="${y(v) + 4}" fill="${c('--muted')}" font-size="12" text-anchor="end">${v} €</text>`;
+  for (let v = 0; v <= maxY + 1e-9; v += ystep) s += `<line x1="${L}" x2="${W - Rm}" y1="${y(v)}" y2="${y(v)}" stroke="${c('--line')}"/><text x="${L - 6}" y="${y(v) + 4}" fill="${c('--muted')}" font-size="20" text-anchor="end">${v} €</text>`;
   s += `<line x1="${x(0)}" y1="${y(0)}" x2="${x(maxX)}" y2="${y(maxY)}" stroke="${c('--muted')}" stroke-dasharray="4 4" opacity=".6"/>`;
   const pts = eff.filter((e) => e.save >= 0).sort((a, b) => a.dMin - b.dMin);
   s += `<polyline fill="none" stroke="${c('--accent')}" stroke-width="2" points="${pts.map((e) => `${x(e.dMin)},${y(e.save)}`).join(' ')}"/>`;
   pts.forEach((e) => {
     const col = e.best ? c('--best') : e.freeWin ? c('--good') : c('--accent');
-    const r = state.selected === e ? 9 : 6;
+    const r = state.selected === e ? 12 : 8;
     s += `<circle class="pt" data-i="${eff.indexOf(e)}" cx="${x(e.dMin)}" cy="${y(e.save)}" r="${r}" fill="${col}" stroke="${c('--card')}" stroke-width="2"/>`;
   });
-  s += `<text x="${W - Rm}" y="${H - 4}" fill="${c('--muted')}" font-size="12" text-anchor="end">minutes en plus</text></svg>`;
+  s += `<text x="${W - Rm}" y="${H - 4}" fill="${c('--muted')}" font-size="20" text-anchor="end">minutes en plus</text></svg>`;
   $('chart').innerHTML = s;
   $('chart').querySelectorAll('.pt').forEach((el) => el.addEventListener('click', () => {
     state.selected = eff[+el.dataset.i];

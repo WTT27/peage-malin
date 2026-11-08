@@ -94,7 +94,8 @@ async function resolveLocals(points, preset = []) {
 }
 
 // Main entry. onProgress(fraction, text)
-export async function analyse(o, d, v, depart, onProgress = () => {}) {
+// options.estimator: 'tomtom' (complete, default) or 'valhalla' (economical: free estimates + TomTom checks)
+export async function analyse(o, d, v, depart, onProgress = () => {}, { estimator = 'tomtom' } = {}) {
   const opt = { maxSpeed: v.maxSpeed, depart: isoLocal(depart) };
   onProgress(0.03, 'Itinéraire le plus rapide…');
   const [routes, freeRoutes] = await Promise.all([
@@ -132,6 +133,12 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
   // ---- interchanges and their off-motorway points ----
   onProgress(0.1, 'Échangeurs et routes nationales…');
   const allNodes = tolls.map(([s0, s1]) => stretchNodes(pts, cum, s0, s1));
+  allNodes.forEach((nodes, k) => {      // stretches without stations (e.g. the A86 Duplex tunnel): use the price label
+    if (nodes.length === 2 && nodes.startName === 'début du péage') {
+      const det = tollBetween(tolls[k][0], tolls[k][1]).details[0];
+      if (det) nodes.title = det.to ? `${cleanName(det.from)} → ${cleanName(det.to)}` : det.from.replace(/\s*\(.*\)$/, '');
+    }
+  });
   const flat = allNodes.flat();
   const locals = await resolveLocals(flat.map((nd) => pts[nd.idx]), flat.map((nd) => nd.local));
   flat.forEach((nd, i) => { nd.L = locals[i]; });
@@ -139,8 +146,24 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
   // ---- Valhalla estimates of free pieces (free service, no TomTom quota) ----
   const est = new Map();             // "A|B" -> {sec, km}
   const ek = (A, B) => `${A[0].toFixed(5)},${A[1].toFixed(5)}|${B[0].toFixed(5)},${B[1].toFixed(5)}`;
+  const real = new Map();            // free pieces checked with TomTom: key -> {sec, km, mkm, mid, vsec} | null (invalid)
+  async function confirmPiece(A, B) {
+    const key = ek(A, B);
+    if (real.has(key)) return;
+    const r = await route(A, B, { ...opt, avoidTolls: true });
+    if (!r.length) { real.set(key, null); return; }
+    const pr = priceRoute(r[0], depart);
+    if (pr.unpriced || pr.toll > 0.5) {                               // TomTom could not avoid the motorway
+      if (globalThis.PM_DEBUG) console.error('free piece rejected', key, pr.toll, pr.unpriced, pr.details.map((x) => x.from));
+      real.set(key, null); return;
+    }
+    const rp = routePoints(r[0]);
+    real.set(key, { sec: r[0].summary.travelTimeInSeconds, km: r[0].summary.lengthInMeters / 1000, mkm: motorwayKmOf(r[0], rp),
+      mid: rp[Math.floor(rp.length / 2)], vsec: est.get(key)?.sec });
+  }
+  let mode = estimator, notice = null;
   const vJobs = [];
-  for (const nodes of allNodes) {
+  if (mode === 'valhalla') for (const nodes of allNodes) {
     // matrices over windows of interchanges less than ~120 km apart (server limit 150 km)
     const ok = nodes.filter((nd) => nd.L);
     for (let s = 0; s < ok.length - 1;) {
@@ -164,16 +187,32 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
       if (before !== null && before >= 1) escapes.push({ kind: 'entrée', nd, A: o, B: nd.L });
     }
   }
-  for (const e of escapes) vJobs.push(freeEstimate(e.A, e.B, v.maxSpeed).then((r) => { if (r) est.set(ek(e.A, e.B), r); }));
-  let vDone = 0;
-  vJobs.forEach((j) => j.then(() => onProgress(0.12 + 0.45 * (++vDone / vJobs.length), 'Estimation des routes gratuites…')));
-  const vFree = freeEstimate(o, d, v.maxSpeed);
-  await Promise.all(vJobs);
-
-  // ---- calibration: Valhalla is usually slower than TomTom on free roads ----
   let factor = 0.85;
-  const vf = await vFree;
-  if (freeRoutes.length && vf) factor = Math.min(1.15, Math.max(0.55, freeRoutes[0].summary.travelTimeInSeconds / vf.sec));
+  if (mode === 'valhalla') {
+    for (const e of escapes) vJobs.push(freeEstimate(e.A, e.B, v.maxSpeed).then((r) => { if (r) est.set(ek(e.A, e.B), r); }));
+    let vDone = 0;
+    vJobs.forEach((j) => j.then(() => onProgress(0.12 + 0.45 * (++vDone / vJobs.length), 'Estimation des routes gratuites…')));
+    const vFree = freeEstimate(o, d, v.maxSpeed);
+    await Promise.all(vJobs);
+    // calibration: Valhalla is usually slower than TomTom on free roads
+    const vf = await vFree;
+    if (freeRoutes.length && vf) factor = Math.min(1.15, Math.max(0.55, freeRoutes[0].summary.travelTimeInSeconds / vf.sec));
+    if (!est.size && (escapes.length || allNodes.some((ns) => ns.length > 2))) {
+      mode = 'tomtom';
+      notice = 'Service d\'estimation gratuit indisponible : calcul complet avec TomTom.';
+    }
+  }
+  if (mode === 'tomtom') {
+    // complete mode: every free piece between consecutive interchanges and every escape checked with TomTom
+    const jobs = [];
+    for (const nodes of allNodes) for (let j = 0; j < nodes.length - 1; j++) {
+      if (nodes[j].L && nodes[j + 1].L) jobs.push([nodes[j].L, nodes[j + 1].L]);
+    }
+    for (const e of escapes) jobs.push([e.A, e.B]);
+    let n = 0;
+    await Promise.all(jobs.map(([A, B]) => confirmPiece(A, B).then(() =>
+      onProgress(0.12 + 0.8 * (++n / jobs.length), 'Routes gratuites et sorties (TomTom)…'))));
+  }
 
   // ---- options per toll stretch ----
   const perStretch = allNodes.map((nodes) => {
@@ -190,14 +229,21 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
           if (!nodes[j].L || !nodes[e].L) { ok = false; break; }
           const skipped = tollBetween(nodes[j].idx, nodes[e].idx).toll;
           if (skipped === null || skipped < MIN_SKIP) { ok = false; break; }     // not worth leaving the motorway
-          pieces.push({ type: 'free', A: nodes[j].L, B: nodes[e].L });
+          if (mode === 'tomtom') {          // complete mode: chain of checked pieces between consecutive interchanges
+            for (let x = j; x < e; x++) {
+              if (!nodes[x].L || !nodes[x + 1].L) { ok = false; break; }
+              pieces.push({ type: 'free', A: nodes[x].L, B: nodes[x + 1].L });
+            }
+            if (!ok) break;
+          } else pieces.push({ type: 'free', A: nodes[j].L, B: nodes[e].L });
           free.push([j, e]);
         } else pieces.push(mw(nodes[j].idx, nodes[e].idx));
         j = e;
       }
       if (!ok) continue;
       const nm = (i) => (i === 0 ? nodes.startName : i === n - 1 ? nodes.endName : cleanName(nodes[i].name));
-      const label = free.length === 1 && free[0][0] === 0 && free[0][1] === n - 1 ? `sans le péage ${nodes.startName} → ${nodes.endName}`
+      const label = free.length === 1 && free[0][0] === 0 && free[0][1] === n - 1
+        ? (nodes.title ? `sans le péage ${nodes.title}` : `sans le péage ${nodes.startName} → ${nodes.endName}`)
         : free.map(([a, b]) => `routes gratuites ${nm(a)} → ${nm(b)}`).join(', ');
       opts.push({ pieces, label });
     }
@@ -205,7 +251,6 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
   });
 
   // ---- evaluation of a list of pieces (estimated or confirmed) ----
-  const real = new Map();            // confirmed free pieces: key -> {sec, km, mkm, mid, vsec} | null (invalid)
   function evalPieces(pieces) {
     let sec = 0, kmv = 0, mkm = 0, toll = 0, estimated = false, transitions = 0, prev = null;
     const details = [];
@@ -281,17 +326,8 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
     const todo = new Map();
     for (const c of cs) for (const p of c.pieces) if (p.type === 'free' && !real.has(ek(p.A, p.B))) todo.set(ek(p.A, p.B), p);
     let n = 0;
-    await Promise.all([...todo.values()].map(async (p) => {
-      const r = await route(p.A, p.B, { ...opt, avoidTolls: true });
-      onProgress(p0 + (p1 - p0) * (++n / todo.size), 'Vérification avec le trafic en temps réel…');
-      const key = ek(p.A, p.B);
-      if (!r.length) { real.set(key, null); return; }
-      const pr = priceRoute(r[0], depart);
-      if (pr.unpriced || pr.toll > 0.5) { real.set(key, null); return; }   // TomTom could not avoid the motorway
-      const rp = routePoints(r[0]);
-      real.set(key, { sec: r[0].summary.travelTimeInSeconds, km: r[0].summary.lengthInMeters / 1000, mkm: motorwayKmOf(r[0], rp),
-        mid: rp[Math.floor(rp.length / 2)], vsec: est.get(key)?.sec });
-    }));
+    await Promise.all([...todo.values()].map((p) => confirmPiece(p.A, p.B).then(() =>
+      onProgress(p0 + (p1 - p0) * (++n / todo.size), 'Vérification avec le trafic en temps réel…'))));
   }
   function shortlist(list, ref, size) {
     const eff = frontier(list.filter((c) => c.cost < ref.cost - 0.3), 'min', 'cost').filter((c) => c.estimated);
@@ -299,6 +335,8 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
     const S = Math.max(...eff.map((c) => ref.cost - c.cost), 1), Tm = Math.max(...eff.map((c) => c.min - ref.min), 1);
     return eff.map((c) => ({ c, s: (ref.cost - c.cost) / S - (c.min - ref.min) / Tm })).sort((a, b) => b.s - a.s).slice(0, size).map((x) => x.c);
   }
+  if (globalThis.PM_DEBUG) console.error('DEBUG nodes', allNodes.map((ns) => (ns.title || ns.startName) + ':' + ns.map((n) => (n.L ? 'L' : '-')).join('')),
+    'opts', perStretch.map((p) => p.opts.length), 'duplexPiece', allNodes.map((ns) => ns.length === 2 && ns[0].L && ns[1].L ? JSON.stringify(real.get(ek(ns[0].L, ns[1].L))?.sec) : '-'));
   let { ref, list } = buildAll();
   if (!ref) throw new Error('Prix des péages introuvable pour cet itinéraire');
   await confirm(shortlist(list, ref, SHORTLIST_1), 0.6, 0.8);
@@ -333,7 +371,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
   if (!eff.includes(refC)) eff = [refC, ...eff].sort((a, b) => a.min - b.min);
   rate(eff, refC);
   onProgress(1, 'Terminé');
-  return { eff, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, factor, fastest };
+  return { eff, mode, notice, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, factor, fastest };
 }
 
 // best compromise, free wins
