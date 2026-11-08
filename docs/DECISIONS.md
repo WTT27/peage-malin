@@ -123,3 +123,14 @@ Each important decision, with its reason. Newest at the bottom.
 
 ## D-023 — One Claude session at a time (2026-11-08)
 - After disconnections two sessions edited the project in parallel; Thomas kept one and stopped the other.
+
+## D-024 — Free bypasses may start before / end after a toll stretch (2026-11-08)
+- Found by Thomas: to avoid the A86 Duplex he takes A13 → A12 → N12 → A86 (leaving the A13 at Rocquencourt,
+  ~4 km before the toll starts). The engine only started bypasses at the toll start (Rueil), so it missed it.
+- Fix: each toll stretch gets an approach point on the fastest route 5 km before its start and one 5 km after its
+  end (on free road). Bypasses are also tried from/to these points. Cost: ~2–8 extra TomTom requests per trip.
+- Result (Fri 13 Nov 08:00, 5008): Duplex avoided via A12/N12 for +5 min, −9.71 € (was +15 min via Rueil);
+  combined with a short free stretch near the A5 it becomes the best compromise: +10 min, −13.12 €.
+- Labels now show the main roads of the free part ("par N10", "par A12"). TomTom names a road only where there is
+  a manoeuvre, so the N12 continuing straight from the A12 appears as "A12".
+- Google Maps link: a 3rd waypoint at 80 % of each free part so Google cannot rejoin the toll road.

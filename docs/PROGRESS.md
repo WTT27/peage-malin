@@ -33,6 +33,8 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 - Bordeaux: A10 to Poitiers sud then free roads: +16 min, −22.31 € (best compromise) — 62 TomTom requests, 19 s.
 - Brive: free roads to Allaines then motorway: +5 min, −8.92 € — 25 requests, 7 s.
 - Demangevelle: avoiding the A86 Duplex: +15 min, −8.43 € — 36 requests.
+  → after D-024: Duplex avoided via A13/A12/N12 for +5 min, −9.71 €; best compromise +10 min, −13.12 € (44 requests).
+  Bordeaux 64 requests, Brive 30 (results unchanged).
 
 ## Findings from optimizer v2 (Fri 13 Nov 08:00)
 - Bordeaux/5008: motorway to Poitiers nord then N10: +26 min, −24.65 € (best compromise).
@@ -49,7 +51,7 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
   complete method automatically. Phones are not affected by this server-side block.
 
 ## Known limitations
-- Avoiding the A86 Duplex: v1 estimated +0 min, v2 +13 min, v3 +15 min (Friday 8:00) — to be checked on the road.
+- Avoiding the A86 Duplex: via A12/N12 +5 min (Friday 8:00); Thomas confirms this is his usual route.
 - A few variants crossing the Cofiroute/Vinci boundary at Tours are still unpriced (flagged "(!)").
 - Escota, Arcos, A86 Duplex reverse direction (Vélizy→Rueil/Vaucresson) not encoded yet.
 - e-208 charging time is a simple model (45 kW average, 10 min per stop, 10→80 %); no charger location yet.
