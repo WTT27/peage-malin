@@ -19,6 +19,13 @@ const send = (method, params = {}) => new Promise((r) => { const i = ++id; pendi
 await send('Emulation.setDeviceMetricsOverride', { width: +width, height: 900, deviceScaleFactor: 1, mobile: true });
 await send('Page.enable'); await send('Runtime.enable');
 await send('Page.navigate', { url });
+// optional: PM_PRE = JS run once the page is loaded, then the page is reloaded (e.g. fill localStorage);
+//           PM_ACT = JS run after that reload (e.g. click a button)
+if (process.env.PM_PRE || process.env.PM_ACT) {
+  await sleep(2500);
+  if (process.env.PM_PRE) { await send('Runtime.evaluate', { expression: process.env.PM_PRE }); await send('Page.reload', {}); await sleep(2500); }
+  if (process.env.PM_ACT) await send('Runtime.evaluate', { expression: process.env.PM_ACT });
+}
 const t0 = Date.now();
 let found = false;
 while (Date.now() - t0 < +tmo * 1000) {

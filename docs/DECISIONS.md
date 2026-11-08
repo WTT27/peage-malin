@@ -171,3 +171,17 @@ Each important decision, with its reason. Newest at the bottom.
   points are still > 60 km apart keep the group closest to the stations they share prices with. Left: 1 (Capbreton).
 - Near-ties between a main-line barrier and an exit next to it (Chamant vs Senlis N°8): the barrier wins, because
   through traffic pays it.
+
+## D-028 — Saving split, saved places, saved trips with a live check; all private on the phone (2026-11-08)
+- Every option shows its saving split: "dont péages −x €, gazole/électricité ±y €" (vs the fastest route).
+- **Places** ("Maison", recurring destinations): ☆ next to Départ/Arrivée saves the current address under a name; chips
+  fill the field in one tap; deletion in Réglages.
+- **Saved trips**: "☆ Enregistrer" on any route stores origin, destination, vehicle, label, Google Maps waypoints and the
+  figures at saving time. "Vérifier" = 2 live TomTom requests (traffic now): the saved route through its waypoints (with
+  TomTom traffic sections: closures, accidents, jams with delay) and the fastest route now. Verdict OK / à surveiller /
+  relancer, based on: closure, length change > 5 % (detour), extra toll > 1 €, much longer than saved, gap to the fastest
+  route grown by > 15 min without extra saving. "Relancer l'analyse" re-runs the full search for that trip.
+- **Privacy (Thomas's question):** the code is public on GitHub, but contains no personal data. Key, settings, places
+  and trips live only in the phone's browser storage (localStorage); there is no server of ours. Leaving the phone:
+  trip coordinates to TomTom (routing, with Thomas's key), typed addresses to OpenStreetMap Nominatim, diesel price
+  request to data.economie.gouv.fr. Limits: lost if browser data is cleared; not synced between devices.

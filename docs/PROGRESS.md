@@ -16,7 +16,7 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 | 3 | Alternatives + cost/duration chart (F2) | ✅ in the app; optimizer v2 ✅ (corridor combinations + national-road escapes, efficient routes, ladder); chart → in the app |
 | 4 | Best in-between route (F3, revised by D-018) | ✅ best compromise, free wins, time-budget slider |
 | 5 | Google Maps hand-off + phone install (F4) | ✅ v0.1 published on GitHub Pages — waiting for Thomas's phone test |
-| 6 | "While driving" re-check (F5) | — |
+| 6 | "While driving" re-check (F5) | ✅ v1: saved trips with a live "Vérifier" (traffic, closures, compromise still valid) |
 | 7 | Western Europe | — |
 
 ## Open questions

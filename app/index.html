@@ -18,19 +18,30 @@
 </header>
 
 <main>
+  <section id="trips" class="card hidden">
+    <h2>Mes trajets</h2>
+    <div id="tripList"></div>
+  </section>
+
   <form id="form" class="card" autocomplete="off">
     <label class="field">
       <span>Départ</span>
       <div class="row">
         <input id="from" type="text" placeholder="Ville, adresse…" required>
-        <button type="button" id="btnHere" class="small-btn" title="Ma position">📍</button>
+        <button type="button" id="btnHere" class="small-btn" title="Ma position" aria-label="Ma position">📍</button>
+        <button type="button" id="btnSaveFrom" class="small-btn" title="Enregistrer ce lieu" aria-label="Enregistrer ce lieu">☆</button>
       </div>
       <ul class="suggest" id="fromSuggest"></ul>
+      <div class="chips" id="fromChips"></div>
     </label>
     <label class="field">
       <span>Arrivée</span>
-      <input id="to" type="text" placeholder="Ville, adresse…" required>
+      <div class="row">
+        <input id="to" type="text" placeholder="Ville, adresse…" required>
+        <button type="button" id="btnSaveTo" class="small-btn" title="Enregistrer ce lieu" aria-label="Enregistrer ce lieu">☆</button>
+      </div>
       <ul class="suggest" id="toSuggest"></ul>
+      <div class="chips" id="toChips"></div>
     </label>
     <div class="field">
       <span>Véhicule</span>
@@ -103,6 +114,10 @@
       <button value="cancel" class="small-btn">Annuler</button>
       <button value="ok" id="sSave" class="primary small">Enregistrer</button>
     </div>
+    <h3>Mes lieux</h3>
+    <div id="placeList"></div>
+    <p class="hint">Vos lieux, trajets, clé et réglages sont enregistrés uniquement sur ce téléphone (rien n'est envoyé
+      à GitHub ni ailleurs). Pour chercher un itinéraire, seuls le départ et l'arrivée sont envoyés à TomTom.</p>
     <p class="hint">Tarifs péages classe 1 : <span id="dataVersion"></span></p>
   </form>
 </dialog>
