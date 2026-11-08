@@ -184,17 +184,3 @@ export function nearestLocal(pt, maxKm = 3) {
   });
   return best;
 }
-
-// Built-in ordinary-road point near a motorway point (precomputed from OpenStreetMap), or null
-export function builtinLocal(pt, maxKm = 4) {
-  let best = null, bd = Infinity;
-  for (const s of D.st) {
-    for (let i = 0; i < s.points.length; i++) {
-      const l = s.local[i];
-      if (!l) continue;
-      const d = km(pt, s.points[i]);
-      if (d < bd) { bd = d; best = l; }
-    }
-  }
-  return bd <= maxKm ? best : null;
-}
