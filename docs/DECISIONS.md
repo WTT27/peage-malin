@@ -205,3 +205,18 @@ Each important decision, with its reason. Newest at the bottom.
   always kept). Example 18 Dec 09:00: +13 min −8.79 € removed in favour of +13 min −10.56 €.
 - Answer to "hard-coded or general?": all fixes are general (toll section ends, Google waypoints, pricing); no code is
   specific to a route or a place.
+
+## D-031 — Hide options that add almost nothing; Google Maps stops checked before opening (2026-11-08)
+- Thomas: "+13 min −10.56 € is far more interesting than +24 min −11.04 € (0.48 € for 11 more minutes)". Rule: from the
+  fastest to the slowest, an option is shown only if it saves at least 1 € more AND at least 1 € per 10 extra minutes
+  than the last option kept (a filter against "almost nothing more", not a value-of-time ranking).
+- Thomas: the toll-free option opened in Google Maps with the A13 and A5 (5 h 10 instead of 5 h 59). Cause: only 2
+  stops → Google chose its own (toll) roads in between. Fix, general:
+  1. Stops are placed next to every toll section of the fastest route that the option avoids (ends of the avoided
+     part first, then in between), on the option's own roads; max 9 (Google limit).
+  2. When "Ouvrir dans Google Maps" or "Enregistrer" is tapped, the stops are checked with TomTom (fastest route through
+     the stops, tolls allowed = proxy of Google). If extra tolls appear, a stop is added on the option level with that
+     toll stretch, up to 3 rounds (1–3 requests).
+  3. Toll-free option: a note asks to switch on "Éviter les péages" in Google Maps (no documented URL parameter).
+- Test (proxy): Demangevelle 18 Dec 09:00 — 8/8 options followed with the expected tolls; Lille 8/8 (one +0.50 €);
+  Bordeaux 9/11 (toll-free on 640 km cannot be held by 9 stops → note; Auvours +1 €).

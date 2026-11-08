@@ -607,18 +607,66 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     // start, middle and 80 % of the free part: Google must not rejoin the toll road (e.g. stay on the N12)
     return [p.A === o ? null : p.A, r?.mid, p.B === d ? null : r?.late].filter(Boolean);
   });
-  const refC = { ...ref, label: 'Le plus rapide (autoroute)', kind: 'ref', via: [], isRef: true };
+  // Google waypoints that keep Google off the tolls this option avoids (Thomas: the toll-free option opened in Google
+  // Maps with the A13 and the A5). The option's whole line is rebuilt; along every toll section of the fastest route
+  // that the option does NOT drive, stops are put on the option's own roads next to it — first where the avoided part
+  // begins and ends (Google would leave late / rejoin early there), then in between. At most 9 stops, in route order.
+  const tollSamples = [];
+  tolls.forEach(([s0, s1], k) => { for (let i = s0, last = -1e9; i <= s1; i++) if (cum[i] - last >= 4 || i === s1) { tollSamples.push({ i, k }); last = cum[i]; } });
+  const guards = (geo, driven) => {
+    // geo: [{p, own}] line of the option (own = not on the fastest route's motorway pieces); driven: [[a, b]] index ranges
+    const avoided = tollSamples.filter((t) => !driven.some(([a, b]) => t.i >= a && t.i <= b));
+    const runs = [];
+    for (const t of avoided) {
+      let bj = -1, bd = Infinity;
+      geo.forEach((g, j) => { if (g.own) { const dd = km(g.p, pts[t.i]); if (dd < bd) { bd = dd; bj = j; } } });
+      if (bj < 0 || bd < 0.8) continue;
+      const last = runs[runs.length - 1];
+      if (last && last.k === t.k && last.items[last.items.length - 1].i < t.i && t.i - last.items[last.items.length - 1].i < 400) last.items.push({ i: t.i, j: bj });
+      else runs.push({ k: t.k, items: [{ i: t.i, j: bj }] });
+    }
+    // 9 stops shared by length of the avoided parts; each part gets its two ends first, then evenly spaced points
+    const total = runs.reduce((t, r) => t + r.items.length, 0) || 1;
+    const order = [];
+    for (const r of runs) {
+      const q = Math.min(r.items.length, Math.max(r.items.length > 1 ? 2 : 1, Math.round(9 * r.items.length / total)));
+      for (let k = 0; k < q; k++) order.push(r.items[q === 1 ? 0 : Math.round(k * (r.items.length - 1) / (q - 1))]);
+    }
+    let js = [...new Set(order.map((x) => x.j))];
+    if (js.length > 9) js = Array.from({ length: 9 }, (_, k) => js[Math.round(k * (js.length - 1) / 8)]);
+    return js;
+  };
+  const lineOf = (pieces) => {
+    const geo = [], driven = [];
+    for (const p of pieces) {
+      if (p.type === 'mw') { if (p.b > p.a) { driven.push([p.a, p.b]); for (let i = p.a; i <= p.b; i += 15) geo.push({ p: pts[i], own: false }); } }
+      else { const g = p.type === 'seg' ? p.geo : real.get(ek(p.A, p.B))?.geo; for (const q of g || []) geo.push({ p: q, own: true }); }
+    }
+    return { geo, driven };
+  };
+  const viaFor = (pieces, extraPts = []) => {
+    const { geo, driven } = lineOf(pieces);
+    const js = guards(geo, driven);
+    for (const q of extraPts) {                       // complete with the "away from motorway" points if room is left
+      if (js.length >= 9) break;
+      let bj = 0, bd = Infinity; geo.forEach((g, j) => { const dd = km(g.p, q); if (dd < bd) { bd = dd; bj = j; } });
+      if (!js.includes(bj)) js.push(bj);
+    }
+    return js.sort((a, b) => a - b).map((j) => geo[j].p);
+  };
+  const guardVia = (r) => viaFor([{ type: 'seg', geo: sample(routePoints(r)) }]);
+  const refC = { ...ref, label: 'Le plus rapide (autoroute)', kind: 'ref', via: [], isRef: true, line: sample(pts) };
   const finals = [refC];
   const roadsOf = (pieces) => [...new Set(pieces.filter((p) => p.type !== 'mw').flatMap((p) => (p.type === 'seg' ? p.roads : real.get(ek(p.A, p.B))?.roads || [])))];
   for (const c of list) if (!c.estimated) {
     const rd = roadsOf(c.pieces);
-    finals.push({ ...c, label: rd.length ? `${c.label} (par ${rd.join(', ')})` : c.label, via: viaOf(c.pieces) });
+    finals.push({ ...c, label: rd.length ? `${c.label} (par ${rd.join(', ')})` : c.label, via: viaFor(c.pieces, viaOf(c.pieces)),
+      line: lineOf(c.pieces).geo.map((g) => g.p) });
   }
   const extra = (r, label, kind) => {
     const c = evaluateRoute(r, v, depart);
     if (!c) return;
-    const rp = routePoints(r);
-    finals.push({ ...c, label, kind, via: [rp[Math.floor(rp.length / 3)], rp[Math.floor(2 * rp.length / 3)]] });
+    finals.push({ ...c, label, kind, via: guardVia(r), line: sample(routePoints(r)) });
   };
   routes.slice(1).forEach((r, i) => { const rd = mainRoads(r); extra(r, `Autre itinéraire${rd.length ? ` (par ${rd.join(', ')})` : ` ${i + 1}`}`, 'tomtom'); });
   freeRoutes.forEach((r, i) => {
@@ -638,6 +686,18 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   // Thomas's rule: options within 2 minutes of each other → keep only the cheapest (the fastest route is always kept)
   eff = eff.filter((e) => e === refC || !eff.some((f) => f !== e && f.min >= e.min - 1e-6 && f.min - e.min <= 2 && f.cost < e.cost - 0.01));
   eff = eff.filter((e) => e === refC || !eff.some((f) => f !== e && f !== refC && f.min < e.min && e.min - f.min <= 2 && f.cost < e.cost - 0.01));
+  // Thomas: hide options that save almost nothing more than the previous one shown: walking from the fastest to the
+  // slowest, an option must save at least 1 € more AND at least 1 € per 10 extra minutes than the last one kept.
+  {
+    const kept = [];
+    for (const e of [...eff].sort((a, b) => a.min - b.min)) {
+      const prev = kept[kept.length - 1];
+      if (!prev || e === refC) { kept.push(e); continue; }
+      const dS = prev.cost - e.cost, dT = e.min - prev.min;
+      if (dS >= Math.max(1, dT / 10)) kept.push(e);
+    }
+    eff = kept;
+  }
   rate(eff, refC);
   onProgress(1, 'Terminé');
   return { eff, mode, notice, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, factor, fastest };
@@ -717,6 +777,47 @@ export async function checkTrip(fav, v) {
   }
   const title = { ok: '✅ Itinéraire OK', warn: '⚠️ À surveiller', bad: '❌ Relancer l\'analyse conseillé' }[level];
   return { level, title, lines, at: now.toISOString() };
+}
+
+// Before opening Google Maps: check the stops with TomTom ("would a router that likes motorways, going through these
+// stops, pay tolls this option avoids?"). If yes, add a stop on the option's own road next to each such toll stretch and
+// check again (up to 3 rounds). 1-3 TomTom requests. Returns {via, ok}.
+export async function refineVia(o, d, e, v, depart = new Date()) {
+  if (!e.line || !e.line.length) return { via: e.via || [], ok: true };
+  const nearestJ = (p) => { let bj = 0, bd = Infinity; e.line.forEach((q, j) => { const dd = km(q, p); if (dd < bd) { bd = dd; bj = j; } }); return [bj, bd]; };
+  let js = [...new Set((e.via || []).map((p) => nearestJ(p)[0]))].sort((a, b) => a - b);
+  for (let round = 0; round < 3; round++) {
+    const via = js.map((j) => e.line[j]);
+    const rs = await route(o, d, { via, depart: isoLocal(depart), maxSpeed: v.maxSpeed });
+    if (!rs.length) return { via, ok: false };
+    const r = rs[0], pr = priceRoute(r, depart);
+    if (!pr.unpriced && pr.toll <= e.toll + 0.5) return { via, ok: true };
+    const rp = routePoints(r), adds = [];
+    for (const sct of r.sections || []) {
+      if (sct.sectionType !== 'TOLL_ROAD') continue;
+      // toll stretch of the test route that is not on the option: find where the option is level with its start and its
+      // end, and put stops on the option in between (1 per ~40 km), where the option is not on that toll road
+      const [j0] = nearestJ(rp[sct.startPointIndex]), [j1] = nearestJ(rp[sct.endPointIndex]);
+      const lo = Math.min(j0, j1), hi = Math.max(j0, j1), n = Math.max(1, Math.round((hi - lo) / 40));
+      for (let k = 1; k <= n; k++) {
+        const j = Math.round(lo + (hi - lo) * k / (n + 1));
+        let dmin = Infinity;
+        for (let i = sct.startPointIndex; i <= sct.endPointIndex; i += 3) dmin = Math.min(dmin, km(rp[i], e.line[j]));
+        if (dmin > 0.5) adds.push(j);
+      }
+    }
+    if (!adds.length) return { via, ok: false };
+    const keep = new Set(adds);
+    let all = [...new Set([...js, ...adds])].sort((a, b) => a - b);
+    while (all.length > 9) {                        // drop the older stop closest to its neighbour
+      let bi = -1, bg = Infinity;
+      all.forEach((j, i) => { if (keep.has(j)) return; const g = Math.min(i ? j - all[i - 1] : 1e9, i < all.length - 1 ? all[i + 1] - j : 1e9); if (g < bg) { bg = g; bi = i; } });
+      if (bi < 0) { all = all.slice(0, 9); break; }
+      all.splice(bi, 1);
+    }
+    js = all;
+  }
+  return { via: js.map((j) => e.line[j]), ok: false };
 }
 
 export function isoLocal(d) {

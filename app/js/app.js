@@ -1,5 +1,5 @@
 import { loadTolls, tollData } from './tolls.js';
-import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName } from './optimizer.js';
+import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName, refineVia } from './optimizer.js';
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 
@@ -242,7 +242,7 @@ $('form').addEventListener('submit', async (ev) => {
     }, { estimator: engineMode() });
     const departLabel = depart.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     state.result = { ...res, o, d, v, vehKey: state.veh, fromLabel: $('from').value.split(',')[0], toLabel: $('to').value.split(',')[0],
-      departLabel, secs: Math.round((Date.now() - t0) / 1000) };
+      departLabel, depart, secs: Math.round((Date.now() - t0) / 1000) };
     render();
   } catch (e) {
     showError(e.message || String(e));
@@ -267,12 +267,27 @@ function routeCard(e, { compact = false } = {}) {
     <div class="label">${escapeHtml(e.label)}</div>
     ${e.isRef ? '' : `<div class="split">${splitText(e, state.result.vehKey)}</div>`}
     <div class="split">Péages payés : ${escapeHtml(tollsText(e.details))}</div>
+    ${e.kind === 'free' && e.toll < 0.05 ? '<div class="split">👉 Dans Google Maps, activez aussi « Éviter les péages » (Options) pour être sûr de rester sur cet itinéraire.</div>' : ''}
     <div class="meta">${hm(e.min)} · ${Math.round(e.km)} km · péages ${eur(e.toll)} · ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(e.energy)}${e.chargeMin ? ` · recharge ≈ ${Math.round(e.chargeMin)} min` : ''}</div>
     <div class="actions">
       <a class="gm" target="_blank" rel="noopener" href="${googleMapsUrl(o, d, e.via)}">Ouvrir dans Google Maps</a>
       <button type="button" class="fav">☆ Enregistrer</button>
     </div>`;
-  div.querySelector('.fav').onclick = () => saveTrip(e);
+  // Google Maps: stops checked (and completed if needed) just before opening
+  const prepare = async () => {
+    if (e.refined || e.isRef) return;
+    try { const r2 = await refineVia(o, d, e, state.result.v, state.result.depart); e.via = r2.via; e.refined = true; } catch { /* keep the stops */ }
+  };
+  const gm = div.querySelector('.gm');
+  gm.onclick = async (ev) => {
+    if (e.refined || e.isRef) return;            // already checked: normal link
+    ev.preventDefault();
+    const txt = gm.textContent; gm.textContent = 'Préparation de l\'itinéraire…';
+    await prepare();
+    gm.textContent = txt; gm.href = googleMapsUrl(o, d, e.via);
+    location.href = gm.href;
+  };
+  div.querySelector('.fav').onclick = async () => { await prepare(); saveTrip(e); };
   if (compact) div.querySelector('.label').style.fontWeight = '600';
   return div;
 }
