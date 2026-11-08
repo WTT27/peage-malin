@@ -16,5 +16,4 @@
   tables (pages 8–9, skipped for now). Needed for the Bordeaux and Brive trips.
 - Vinci page 4 (A61/A62/A64/A65, Toulouse–Bayonne): 29 station names not recognised.
 - Vinci rectangular cross-network tables (pages 2, 8, 9) not parsed yet.
-- data.gouv.fr APRR CSV is a third-party extraction with broken station names (6,962 "stations",
-  names glued together) → must be cleaned or re-extracted from APRR PDFs.
+- data.gouv.fr APRR CSV turned out messy (glued names) → replaced by the official APRR/AREA PDFs, parsed cleanly (APRR 177 stations / 21,505 pairs, AREA 51 / 955, 0 rejected lines).
