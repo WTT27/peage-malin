@@ -37,7 +37,19 @@ export function energy(c, v) {
   return { energy: home * v.homeEurKwh + extra * v.fastEurKwh, chargeMin: extra / v.chargeKw * 60 + stops * v.stopOverheadMin, kwh };
 }
 
-const cleanName = (n) => n.replace(/^\d+(\.\d+)?[a-z]?(?=[A-ZÉ])/, '').trim();
+// readable station name: "CHAUFOUR N°15 à GAILLON N°17" → "Chaufour", "LILLE / DOURGES (péage de Fresnes)" → "Lille / Dourges",
+// "18Alençon nord" → "Alençon nord", "ST-GERMAIN-LAXIS" → "St-Germain-Laxis"
+const SMALL = new Set(['sur', 'sous', 'de', 'du', 'des', 'la', 'le', 'les', 'en', 'aux', 'et', 'lès', 'les']);
+export function prettyName(n) {
+  let x = String(n).replace(/^\d+(\.\d+)?[a-z]?(?=[A-ZÉ])/, '').replace(/\s+à\s+.*$/, '').replace(/N°\s*[\d.]+[A-Za-z]?/g, '')
+    .replace(/\(.*?\)/g, '').replace(/^p[ée]age d[e']\s*/i, '').replace(/\s+/g, ' ').trim();
+  if (x === x.toUpperCase()) {
+    let first = true;
+    x = x.toLowerCase().replace(/[a-zà-ÿ]+/g, (w) => { const r = !first && SMALL.has(w) ? w : w.charAt(0).toUpperCase() + w.slice(1); first = false; return r; });
+  }
+  return x.replace(/\b([an])(\d+)\b/gi, (m, a, d) => a.toUpperCase() + d) || String(n);
+}
+const cleanName = prettyName;
 const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : null; };
 
 function frontier(items, tkey, ckey) {
@@ -161,10 +173,22 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   // ---- interchanges and their off-motorway points ----
   onProgress(0.1, 'Échangeurs et routes nationales…');
   const allNodes = tolls.map(([s0, s1]) => stretchNodes(pts, cum, s0, s1));
+  // motorway number at a point of the fastest route (from TomTom instructions)
+  const roadAt = (i) => {
+    let rn = '';
+    for (const x of fastest.guidance?.instructions || []) {
+      if (x.pointIndex > i) break;
+      const r0 = (x.roadNumbers || []).find((z) => /^A\d/.test(z));
+      if (r0) rn = r0;
+    }
+    return rn;
+  };
+  allNodes.forEach((nodes, k) => { nodes.road = roadAt(Math.floor((tolls[k][0] + tolls[k][1]) / 2)); });
   allNodes.forEach((nodes, k) => {      // stretches without stations (e.g. the A86 Duplex tunnel): use the price label
     if (nodes.length === 2 && nodes.startName === 'début du péage') {
       const det = tollBetween(tolls[k][0], tolls[k][1]).details[0];
-      if (det) nodes.title = det.to ? `${cleanName(det.from)} → ${cleanName(det.to)}` : det.from.replace(/\s*\(.*\)$/, '');
+      if (det) nodes.title = /duplex/i.test(det.from) ? 'le Duplex A86'
+        : det.to && det.to !== '(barrière)' ? `${cleanName(det.from)} → ${cleanName(det.to)}` : `la barrière de ${cleanName(det.from)}`;
     }
   });
   // approach points on the fastest route itself (a free road), a few km before / after each stretch
@@ -283,9 +307,10 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       if (!ok) continue;
       const f0 = nodes.hasPre ? 1 : 0, f1 = nodes.hasPost ? n - 2 : n - 1;      // first / last toll node
       const nm = (i) => (i <= f0 ? nodes.startName : i >= f1 ? nodes.endName : cleanName(nodes[i].name));
+      const rd = nodes.road ? nodes.road + ' ' : '';
       const label = free.length === 1 && free[0][0] <= f0 && free[0][1] >= f1
-        ? (nodes.title ? `sans le péage ${nodes.title}` : `sans le péage ${nodes.startName} → ${nodes.endName}`)
-        : free.map(([a, b]) => `routes gratuites ${nm(a)} → ${nm(b)}`).join(', ');
+        ? (nodes.title ? `évite ${nodes.title}` : `évite ${rd}${nodes.startName} → ${nodes.endName}`)
+        : `${rd ? nodes.road + ' : ' : ''}routes gratuites ${free.map(([a, b]) => `${nm(a)} → ${nm(b)}`).join(', puis ')}`;
       opts.push({ pieces, label });
     }
     return { s0: nodes[0].idx, s1: nodes[n - 1].idx, opts };
@@ -318,10 +343,10 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
           name: `${x === f0 ? nodes.startName : cleanName(nodes[x].name)} → ${x + 1 === f1 ? nodes.endName : cleanName(nodes[x + 1].name)}` });
       }
       if (!spots.length) return;
-      const whole = nodes.title || `${nodes.startName} → ${nodes.endName}`;
+      const whole = nodes.title || `${nodes.road ? nodes.road + ' ' : ''}${nodes.startName} → ${nodes.endName}`;
       const pick = spots.length > 10 ? Array.from({ length: 10 }, (_, k) => spots[Math.floor(k * spots.length / 10)]) : spots;
-      reqs.push({ boxes: pick.map((sp) => cover(sp.i, 0.5)), retry: pick.map((sp) => cover(sp.j, 1)), t: spots.reduce((a, sp) => a + sp.t, 0), name: `évite le péage ${whole}` });
-      if (spots.length > 1 && mode === 'tomtom') for (const sp of spots) reqs.push({ boxes: chain(sp.i), retry: [cover(sp.j, 1)], t: sp.t, name: `évite ${sp.name}` });
+      reqs.push({ boxes: pick.map((sp) => cover(sp.i, 0.5)), retry: pick.map((sp) => cover(sp.j, 1)), t: spots.reduce((a, sp) => a + sp.t, 0), name: `évite ${whole}` });
+      if (spots.length > 1 && mode === 'tomtom') for (const sp of spots) reqs.push({ boxes: chain(sp.i), retry: [cover(sp.j, 1)], t: sp.t, name: `évite ${nodes.road ? nodes.road + ' ' : ''}${sp.name}` });
     });
     reqs.sort((a, b) => b.t - a.t);
     const todo = reqs.slice(0, mode === 'tomtom' ? MAX_DETOURS : 4);
@@ -367,7 +392,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       const pr = priceRoute(r, depart);
       const tb = tollBetween(0, a).toll, ta = tollBetween(b, N).toll;
       if (pr.unpriced) { if (globalThis.PM_DEBUG) console.error('detour unpriced', q.name); return; }
-      if (tb === null || ta === null) { wholeDetours.push({ r, label: `Détour TomTom : ${q.name}` }); return; }   // kept as a whole route
+      if (tb === null || ta === null) { wholeDetours.push({ r, label: q.name.charAt(0).toUpperCase() + q.name.slice(1) }); return; }   // kept as a whole route
       const Td = timeline(r, rp, rc);
       let mk = 0;
       for (const sct of r.sections || []) if (sct.sectionType === 'MOTORWAY')
@@ -414,7 +439,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
         const pr = priceRoute(r, depart);
         if (pr.unpriced || pr.toll >= g.toll - 0.3) return null;           // must be cheaper than its parent
         const rd = mainRoads(r);
-        wholeDetours.push({ r, label: `Itinéraire TomTom moins cher${rd.length ? ` (par ${rd.join(', ')})` : ''}`, named: true });
+        wholeDetours.push({ r, label: `Autre itinéraire moins cher${rd.length ? ` (par ${rd.join(', ')})` : ''}`, named: true });
         if (globalThis.PM_DEBUG) console.error('chain', g.name, '→', Math.round(r.summary.travelTimeInSeconds / 60), 'min', pr.toll.toFixed(2), '€', rd);
         return { r, boxes, toll: pr.toll, name: g.name + ' +' };
       }));
@@ -514,7 +539,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
         for (const it of items) { pieces.push(mw(cur, it.s0), ...it.pieces); cur = it.s1; }
         pieces.push(mw(cur, N));
         const lab = items.filter((x) => x.label).map((x) => x.label).join(' + ');
-        out.push({ label: 'Détour TomTom : ' + lab, pieces, kind: 'detour' });
+        out.push({ label: lab.charAt(0).toUpperCase() + lab.slice(1), pieces, kind: 'detour' });
       }
     }
     for (const e of escapes) {
@@ -595,8 +620,11 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     const rp = routePoints(r);
     finals.push({ ...c, label, kind, via: [rp[Math.floor(rp.length / 3)], rp[Math.floor(2 * rp.length / 3)]] });
   };
-  routes.slice(1).forEach((r, i) => extra(r, `Alternative TomTom ${i + 1}`, 'tomtom'));
-  freeRoutes.forEach((r, i) => extra(r, i ? `Sans péage (variante ${i})` : 'Sans péage', 'free'));
+  routes.slice(1).forEach((r, i) => { const rd = mainRoads(r); extra(r, `Autre itinéraire${rd.length ? ` (par ${rd.join(', ')})` : ` ${i + 1}`}`, 'tomtom'); });
+  freeRoutes.forEach((r, i) => {
+    const t = priceRoute(r, depart).toll;     // TomTom's "avoid tolls" is only a preference
+    extra(r, (t > 0.05 ? 'Le moins de péages possible' : 'Sans aucun péage') + (i ? ` (variante ${i})` : ''), 'free');
+  });
   for (const w of wholeDetours) {
     if (w.named) { extra(w.r, w.label, 'detour'); continue; }
     const rd = mainRoads(w.r);
@@ -607,6 +635,9 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   for (let i = finals.length - 1; i > 0; i--) if (finals.slice(0, i).some((f) => Math.abs(f.min - finals[i].min) < 0.6 && Math.abs(f.cost - finals[i].cost) < 0.25)) finals.splice(i, 1);
   let eff = frontier(finals.filter((c) => c === refC || c.cost < refC.cost - 0.05), 'min', 'cost');
   if (!eff.includes(refC)) eff = [refC, ...eff].sort((a, b) => a.min - b.min);
+  // Thomas's rule: options within 2 minutes of each other → keep only the cheapest (the fastest route is always kept)
+  eff = eff.filter((e) => e === refC || !eff.some((f) => f !== e && f.min >= e.min - 1e-6 && f.min - e.min <= 2 && f.cost < e.cost - 0.01));
+  eff = eff.filter((e) => e === refC || !eff.some((f) => f !== e && f !== refC && f.min < e.min && e.min - f.min <= 2 && f.cost < e.cost - 0.01));
   rate(eff, refC);
   onProgress(1, 'Terminé');
   return { eff, mode, notice, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, factor, fastest };

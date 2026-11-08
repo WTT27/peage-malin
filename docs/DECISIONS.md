@@ -195,3 +195,13 @@ Each important decision, with its reason. Newest at the bottom.
 - Fix: when a toll section has an approach point on the route (5 km before / after), free parts start/end there, not
   at the station's off-motorway point. Google Maps stops are now picked inside each free part, at places ≥ 1 km from
   the fastest route's motorway (up to 3 per part), never at exits.
+
+## D-030 — Readable labels, tolls paid on every option, "2-minute" rule (2026-11-08)
+- Thomas: "sans le péage Duplex…" read as "without tolls" while the A13 (Mantes/Buchelay, 3 €) was still paid — it was
+  counted, the label was misleading. Labels now: "Évite le Duplex A86 (par A12)", "A5 : routes gratuites X → Y",
+  "Autre itinéraire (par …)"; "Sans aucun péage" only if the toll is really 0 (else "Le moins de péages possible").
+  Station names made readable (no exit numbers / zone ranges / capitals). Each option lists the tolls actually paid.
+- Thomas's rule: when options are within 2 minutes of each other, only the cheapest is shown (the fastest route is
+  always kept). Example 18 Dec 09:00: +13 min −8.79 € removed in favour of +13 min −10.56 €.
+- Answer to "hard-coded or general?": all fixes are general (toll section ends, Google waypoints, pricing); no code is
+  specific to a route or a place.
