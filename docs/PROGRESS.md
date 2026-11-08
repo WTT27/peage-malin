@@ -1,9 +1,10 @@
 # Progress
 
-## Current status — 2026-11-08 (evening)
-Prototype (command-line, not yet an app) works end to end: TomTom routes → toll prices (SAPN, Sanef, Vinci,
-Cofiroute, APRR, AREA, Duplex A86) → energy cost (5008 / e-208) → alternatives (toll-free, skip / leave early /
-join late on each toll stretch) → recommendation with X €/h + sensitivity. Results: docs/results/.
+## Current status — 2026-11-08 (night)
+Phone app (French, runs entirely in the browser) works end to end: address search, 5008 / e-208, departure time,
+efficient in-between routes (free wins, best compromise, "extra time accepted" slider, chart), "Ouvrir dans
+Google Maps" with waypoints. Engine v3 with two methods (complete TomTom = default, economical Valhalla = option).
+Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 
 ## Roadmap
 
@@ -12,9 +13,9 @@ join late on each toll stretch) → recommendation with X €/h + sensitivity. R
 | 0 | Definition, documents | ✅ done |
 | 1 | Feasibility study: free routing sources, French toll price data, fuel prices | ✅ done |
 | 2 | Toll cost of one route (F1), checked on the 3 test trips | ✅ prototype (Thomas: "numbers seem quite OK") |
-| 3 | Alternatives + cost/duration chart (F2) | 🔄 optimizer v2 ✅ (corridor combinations + national-road escapes, efficient routes, ladder); chart → in the app |
+| 3 | Alternatives + cost/duration chart (F2) | ✅ in the app; optimizer v2 ✅ (corridor combinations + national-road escapes, efficient routes, ladder); chart → in the app |
 | 4 | Value-of-time recommendation (F3) | ✅ prototype + sensitivity 5–50 €/h |
-| 5 | Google Maps hand-off + phone install (F4) | — |
+| 5 | Google Maps hand-off + phone install (F4) | ✅ v0.1 (to be tested by Thomas on his phone) |
 | 6 | "While driving" re-check (F5) | — |
 | 7 | Western Europe | — |
 
@@ -33,6 +34,11 @@ join late on each toll stretch) → recommendation with X €/h + sensitivity. R
 - Brive/5008: free roads to Allaines then A10/A71: +6 min, −8.96 €.
 - Demangevelle/5008: free roads to Châtillon-Laborde then A5: +29 min, −14.55 €.
 - e-208: some partly free routes are both faster AND cheaper than TomTom's fastest (less energy → less charging).
+
+## Next
+- Thomas tests the app on his phone (install on home screen, Google Maps hand-off).
+- Compare economical vs complete method on the test trips once Valhalla accepts this server again.
+- Backlog: breaks / charging stops, comfort penalty, while-driving re-check, Escota/Arcos tolls, Western Europe.
 
 ## Known limitations
 - Avoiding the A86 Duplex: v1 estimated +0 min, v2 +13 min (Friday 8:00) — to be checked.

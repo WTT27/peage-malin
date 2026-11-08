@@ -100,3 +100,25 @@ Each important decision, with its reason. Newest at the bottom.
   Nominatim/OpenStreetMap (addresses), data.economie.gouv.fr (diesel price). All free, no account except TomTom.
 - Google Maps hand-off: directions link with up to 9 waypoints placed on the free-road parts, so Google follows
   the chosen in-between route.
+
+## D-021 — Fewer TomTom requests: optimizer v3 (2026-11-08)
+- Motorway times are read from the fastest route (TomTom instructions give the time at each manoeuvre),
+  not requested again; "exit at X" options cost 1 request instead of 2.
+- Pruning: a free piece is only considered if it avoids ≥ 0.50 € of toll; escapes only if ≥ 1 € is at stake.
+- Cache on the phone (IndexedDB): TomTom 3 h, Valhalla 7 days.
+- Off-motorway points for all 1,157 toll-station points precomputed once (Valhalla /locate: nearest
+  tertiary..trunk road, not toll, not a slip road) and embedded in the app data: no Overpass call on the phone.
+  (Overpass servers proved unreliable / refused this server.)
+- Result (complete mode, Fri 13 Nov 08:00): Bordeaux 62 requests / 19 s (was 140 / 2 min), Brive 25 / 7 s,
+  Demangevelle 36 / 15–30 s, with results as good as v2.
+
+## D-022 — Two calculation methods; "complete" is the default (2026-11-08)
+- Complète (default): every free piece and escape checked with TomTom.
+- Économe (option): Valhalla (free) estimates every piece, calibrated on TomTom's toll-free route; only the best
+  9 + 6 options are checked with TomTom (~15 requests). Automatic fallback to the complete method if Valhalla
+  does not answer (it refused this server after heavy use on 2026-11-08).
+- Thomas's decision: keep Valhalla as an option and compare it later with complete runs
+  (tool: tests/compare_modes.mjs).
+
+## D-023 — One Claude session at a time (2026-11-08)
+- After disconnections two sessions edited the project in parallel; Thomas kept one and stopped the other.
