@@ -19,3 +19,13 @@ Each important decision, with its reason. Newest at the bottom.
 ## D-005 — UI in French, project documents in English (2026-11-08)
 - **Why:** app is for French use; docs follow the language of our working conversation.
   Can be switched to French on request.
+
+## D-006 — Starting value X = 10 €/h; consumptions e-208 15 kWh/100 km, 5008 6 L/100 km; max 110 km/h (2026-11-08)
+- Sensitivity check on X planned later.
+
+## D-007 — No live traffic in the app (2026-11-08)
+- **Decision:** option (b): traffic is left to Google Maps after hand-off. No TomTom account.
+
+## D-008 — Valhalla public server as routing source for the prototype (2026-11-08)
+- **Why:** free, no key, supports toll avoidance and alternatives. OSRM demo cannot avoid tolls.
+  OpenRouteService kept as backup. See FEASIBILITY.md.

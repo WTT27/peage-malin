@@ -1,6 +1,6 @@
 # Specification — Toll-aware route optimizer ("Péage Malin", working name)
 
-Status: **draft v0.1** — 2026-11-08. Owner: Thomas (product), Claude (all code & docs).
+Status: **draft v0.2** — 2026-11-08. Owner: Thomas (product), Claude (all code & docs).
 
 ## 1. Goal
 
@@ -29,8 +29,11 @@ Vehicle class: **normal car only** (French toll class 1).
 
 | Vehicle | Energy | Parameters needed |
 |---|---|---|
-| Peugeot e-208 | Electric | consumption (kWh/100 km), electricity price (€/kWh — home vs. fast charger) |
-| Peugeot 5008 | Diesel | consumption (L/100 km), diesel price (€/L — can be fetched from the free French government fuel price data) |
+| Peugeot e-208 | Electric | 15 kWh/100 km (mixed roads); electricity price €/kWh — **to confirm** (assumed 0,40 €/kWh) |
+| Peugeot 5008 | Diesel | 6 L/100 km; diesel price fetched from the free French government fuel price data |
+
+Driving style: **max 110 km/h**, even where 130 is allowed → durations are recomputed with
+this cap (this shrinks the time advantage of motorways).
 
 The user picks the vehicle before each search. Default values are proposed, user can edit.
 
@@ -50,6 +53,7 @@ Show them as a list and on a **cost vs. duration chart**.
 
 ### F3 — Best route according to the user's value of time
 Rule: **"1 hour of my time is worth X €"** (X adjustable; default to be agreed).
+Starting value: **X = 10 €/h** (a sensitivity check will follow).
 Each route gets a *generalized cost* = total cost (€) + duration (h) × X.
 The app recommends the route with the lowest generalized cost and explains the
 trade-off in plain words (e.g. "+12 min, −6,40 €").
@@ -61,7 +65,8 @@ One button opens the selected route in Google Maps (phone app or browser).
 Quick re-check from the current position to the destination, for reacting to accidents
 or traffic jams. Must be usable in one or two taps (ideally by a passenger — the app
 must not encourage handling the phone while driving).
-**Open point:** live traffic requires a traffic-aware routing source (see OPEN-3).
+**Decided (D-007):** no live traffic in the app; the app proposes toll-saving alternatives from
+the current position, and Google Maps (which knows the traffic) handles traffic once the route is opened.
 
 ## 6. Test trips (reference cases)
 

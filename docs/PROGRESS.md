@@ -1,14 +1,14 @@
 # Progress
 
 ## Current status — 2026-11-08
-Project defined, documents created. No code yet.
+Project defined. Feasibility study in progress: routing source validated (Valhalla); toll data approach defined.
 
 ## Roadmap
 
 | Step | Content | Status |
 |---|---|---|
 | 0 | Definition, documents | ✅ done |
-| 1 | Feasibility study: free routing sources, French toll price data, fuel prices | ⏳ next |
+| 1 | Feasibility study: free routing sources, French toll price data, fuel prices | 🔄 in progress (routing ✅) |
 | 2 | Toll cost of one route (F1), checked on the 3 test trips | — |
 | 3 | Alternatives + cost/duration chart (F2) | — |
 | 4 | Value-of-time recommendation (F3) | — |
@@ -20,9 +20,10 @@ Project defined, documents created. No code yet.
 
 | # | Question | Status |
 |---|---|---|
-| OPEN-1 | Value of X (€ per hour of your time) — default? | waiting for Thomas |
-| OPEN-2 | Real consumption of the e-208 (kWh/100 km) and 5008 (L/100 km); where you charge (home / fast chargers) and price | waiting for Thomas |
-| OPEN-3 | Live traffic for "while driving": free routing sources have no traffic. Proposal: free TomTom developer account (no credit card) for traffic-aware durations | waiting for Thomas |
+| OPEN-1 | Value of X | ✅ 10 €/h |
+| OPEN-2 | Consumptions | ✅ 15 kWh/100 km, 6 L/100 km. **Still open:** electricity price €/kWh (assumed 0,40) |
+| OPEN-3 | Live traffic | ✅ no (option b) |
+| OPEN-4 | Does the 110 km/h cap apply to the 5008 too? | waiting for Thomas (assumed yes) |
 
 ## Known limitations
 - Toll prices change every 1 February → yearly data refresh needed.
