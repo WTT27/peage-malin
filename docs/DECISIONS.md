@@ -72,3 +72,20 @@ Each important decision, with its reason. Newest at the bottom.
 
 ## D-017 — Alternatives = toll-free, TomTom alternatives, and per-stretch skip / leave early / join late (2026-11-08)
 - Built from 3 TomTom legs (normal / toll-free / normal). ~20–30 TomTom requests per trip (free quota 2,500/day).
+
+## D-018 — Find in-between routes instead of ranking by €/hour (2026-11-08)
+- Thomas's goal: save as much as possible with little time lost; fixed €/h tends to pick extremes.
+- Analysis: keep only efficient routes (no other route faster AND cheaper); for each, % of the maximum
+  saving vs % of the maximum extra time; best compromise = largest gap; "free wins" (≥1 € for ≤3 min);
+  savings ladder by time budget (+5 … +90 min). €/h kept only as a detail.
+- Comfort penalty for small roads: postponed on purpose (Thomas: "keep it in mind").
+
+## D-019 — Optimizer v2 search (2026-11-08)
+- Corridor model per toll stretch: cut at every priced interchange (max 12), each piece on motorway or
+  on free roads, all combinations (skip middle, leave early, join late, several skips). Each motorway run is
+  priced as one ticket. Stretches combined additively.
+- Escape routes: motorway to exit X then free roads to destination (and the reverse) → finds national
+  roads such as the N10 (verified on Bordeaux: Poitiers → Ruffec → Angoulême → Barbezieux).
+- Free-road legs start/end on an ordinary road near the exit (OpenStreetMap, Overpass) because TomTom
+  stays on the motorway when a leg starts on it. Toll on "free" legs is still priced (avoid is only a preference).
+- TomTom calls cached on disk (data/cache, not in git); ~110 calls per trip and vehicle.
