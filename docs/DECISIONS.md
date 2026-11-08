@@ -89,3 +89,14 @@ Each important decision, with its reason. Newest at the bottom.
 - Free-road legs start/end on an ordinary road near the exit (OpenStreetMap, Overpass) because TomTom
   stays on the motorway when a leg starts on it. Toll on "free" legs is still priced (avoid is only a preference).
 - TomTom calls cached on disk (data/cache, not in git); ~110 calls per trip and vehicle.
+
+## D-020 — Phone-only app: everything runs in the phone's browser (2026-11-08)
+- Thomas wants a solution that does not depend on his server. The engine (toll engine + optimizer v2) is
+  ported to JavaScript (app/js), toll data exported to one compact file (app/data/tolls.json, ~170 kB gzipped).
+- Static site, to be hosted free on GitHub Pages (account WTT27), installable on the home screen.
+- The TomTom key is NOT in the code: entered once in the app settings (or via a link …/#key=…, the part after
+  # is never sent to any server) and stored on the phone only.
+- Services called from the phone: TomTom (routes), Overpass/OpenStreetMap (local roads near exits),
+  Nominatim/OpenStreetMap (addresses), data.economie.gouv.fr (diesel price). All free, no account except TomTom.
+- Google Maps hand-off: directions link with up to 9 waypoints placed on the free-road parts, so Google follows
+  the chosen in-between route.
