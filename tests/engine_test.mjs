@@ -14,7 +14,7 @@ const key = readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/TOM
 store.tomtomKey = key;
 
 const { loadTolls } = await import('../app/js/tolls.js');
-const { analyse, ladder, DEFAULT_VEHICLES, googleMapsUrl } = await import('../app/js/optimizer.js');
+const { analyse, ladder, DEFAULT_VEHICLES, googleMapsUrl } = await import(process.env.ENGINE || '../app/js/optimizer.js');
 const { stats } = await import('../app/js/services.js');
 await loadTolls();
 const [, , dest, veh = 'diesel', when = '2026-11-13T08:00'] = process.argv;
@@ -23,7 +23,7 @@ const o = [49.00297, 1.3155];
 const t0 = Date.now();
 const r = await analyse(o, D[dest], DEFAULT_VEHICLES[veh], new Date(when), () => {});
 const hm = (m) => `${Math.floor(Math.round(m) / 60)} h ${String(Math.round(m) % 60).padStart(2, '0')}`;
-console.log(`${dest} ${veh}: ${r.count} évalués, ${r.eff.length} efficaces, ${stats.api} requêtes, ${Math.round((Date.now() - t0) / 1000)} s`);
+console.log(`${dest} ${veh}: ${r.count} évalués, ${r.eff.length} efficaces, TomTom ${stats.api} requêtes (+${stats.cached} cache), Valhalla ${stats.valhalla}, confirmés ${r.confirmed}, facteur ${r.factor?.toFixed(2)}, ${Math.round((Date.now() - t0) / 1000)} s`);
 for (const e of r.eff) console.log(`  ${e.best ? '⭐' : e.freeWin ? '🟢' : '  '} +${String(Math.round(e.dMin)).padStart(3)}'  -${e.save.toFixed(2).padStart(6)} €  ${hm(e.min)}  ${e.cost.toFixed(2)} €  ${e.label.slice(0, 100)}`);
 const best = r.eff.find((e) => e.best);
 if (best) console.log('  GoogleMaps:', googleMapsUrl(o, D[dest], best.via));

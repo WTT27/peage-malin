@@ -174,7 +174,8 @@ function render() {
   renderBudget();
   renderChart();
   renderList();
-  $('footStats').textContent = `${count} itinéraires évalués, ${eff.length} retenus · ${stats.api} requêtes TomTom · ${secs} s`;
+  $('footStats').textContent = `${count} itinéraires estimés, ${state.result.confirmed} tronçons vérifiés avec TomTom, ${eff.length} retenus · ` +
+    `${stats.api} requêtes TomTom${stats.cached ? ` (+${stats.cached} déjà en mémoire)` : ''} · ${secs} s`;
   $('results').classList.remove('hidden');
   $('results').scrollIntoView({ behavior: 'smooth' });
 }

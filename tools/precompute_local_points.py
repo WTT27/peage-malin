@@ -1,11 +1,11 @@
-"""For every located toll station, find a point on an ordinary road (trunk/primary/secondary/tertiary, not toll,
-not motorway) 250 m – 2.5 km away, so that toll-free legs can start there. Result cached in
-data/tolls/local_points.json and embedded in the app data (no Overpass call needed on the phone)."""
-import json, math, time, urllib.request, urllib.parse, os
+"""For every located toll station point, find the nearest point on an ordinary road (tertiary..trunk, not toll,
+not a slip road) within 2.5 km, so that toll-free legs can start there. Uses the Valhalla /locate service
+(OpenStreetMap data, free, many points per request). Result: data/tolls/local_points.json, embedded in the app."""
+import json, math, time, urllib.request, os
 
 OUT = 'data/tolls/local_points.json'
-MIRRORS = ['https://maps.mail.ru/osm/tools/overpass/api/interpreter', 'https://overpass-api.de/api/interpreter',
-           'https://overpass.kumi.systems/api/interpreter']
+URL = 'https://valhalla1.openstreetmap.de/locate'
+FILTER = {'min_road_class': 'tertiary', 'max_road_class': 'trunk', 'exclude_ramp': True, 'exclude_toll': True}
 
 
 def km(a, b):
@@ -16,42 +16,41 @@ def km(a, b):
 
 def main():
     idx = json.load(open('data/tolls/index.json'))
-    done = json.load(open(OUT)) if os.path.exists(OUT) else {}
+    done = {k: v for k, v in (json.load(open(OUT)).items() if os.path.exists(OUT) else []) if v}   # retry failures
     pts = {}
-    for k, s in idx['stations'].items():
-        if s['points']:
-            # one representative point per station cluster (stations can have points far apart: keep each cluster)
-            for p in s['points']:
-                key = f'{p[0]:.4f},{p[1]:.4f}'
-                pts.setdefault(key, p)
+    for s in idx['stations'].values():
+        for p in s['points']:
+            pts.setdefault(f'{p[0]:.4f},{p[1]:.4f}', p)
     todo = [k for k in pts if k not in done]
-    print(len(pts), 'points,', len(todo), 'to do')
-    for i in range(0, len(todo), 30):
-        batch = todo[i:i + 30]
-        q = '[out:json][timeout:120];(' + ''.join(
-            f'way(around:2500,{pts[k][0]},{pts[k][1]})[highway~"^(trunk|primary|secondary|tertiary)$"][toll!=yes][motorroad!=yes];'
-            for k in batch) + ');out geom;'
-        data = None
-        for a in range(6):
+    print(len(pts), 'points,', len(todo), 'to do', flush=True)
+    for i in range(0, len(todo), 40):
+        batch = todo[i:i + 40]
+        q = {'locations': [{'lat': pts[k][0], 'lon': pts[k][1], 'radius': 2500, 'search_filter': FILTER} for k in batch],
+             'costing': 'auto', 'verbose': False}
+        res = None
+        for a in range(5):
             try:
-                req = urllib.request.Request(MIRRORS[a % len(MIRRORS)], data=urllib.parse.urlencode({'data': q}).encode(),
-                                             headers={'User-Agent': 'peage-malin/0.1 (personal project)'})
-                data = json.load(urllib.request.urlopen(req, timeout=150))
+                req = urllib.request.Request(URL, data=json.dumps(q).encode(),
+                                             headers={'Content-Type': 'application/json', 'User-Agent': 'peage-malin/0.1 (personal project)'})
+                res = json.load(urllib.request.urlopen(req, timeout=90))
                 break
             except Exception as e:
-                time.sleep(5 * (a + 1))
-        if data is None:
-            print('batch failed', i); continue
-        nodes = [(g['lat'], g['lon']) for w in data['elements'] for g in w.get('geometry', [])]
-        for k in batch:
-            p = pts[k]
-            best = min(((km(p, n), n) for n in nodes if km(p, n) > 0.25), default=None)
-            done[k] = [round(best[1][0], 5), round(best[1][1], 5)] if best and best[0] < 2.5 else None
+                print('  retry', a, e, flush=True)
+                time.sleep(3 * (a + 1))
+        if res is None:
+            print('batch failed', i, flush=True)
+            continue
+        for k, x in zip(batch, res):
+            e = (x.get('edges') or [None])[0] if x else None
+            if e:
+                c = (round(e['correlated_lat'], 5), round(e['correlated_lon'], 5))
+                done[k] = list(c) if km(pts[k], c) < 2.5 else None
+            else:
+                done[k] = None
         json.dump(done, open(OUT, 'w'))
-        print(f'{min(i + 30, len(todo))}/{len(todo)}', flush=True)
-        time.sleep(2)
-    ok = sum(1 for v in done.values() if v)
-    print('done:', ok, '/', len(done), 'with a local road point')
+        print(f'{min(i + 40, len(todo))}/{len(todo)}', flush=True)
+        time.sleep(1)
+    print('done:', sum(1 for v in done.values() if v), '/', len(pts), 'with an ordinary-road point', flush=True)
 
 
 if __name__ == '__main__':
