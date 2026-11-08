@@ -1,5 +1,5 @@
 import { loadTolls, tollData } from './tolls.js';
-import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES } from './optimizer.js';
+import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip } from './optimizer.js';
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 
@@ -26,6 +26,7 @@ $('btnSettings').onclick = () => {
   $('sKwhM').value = V.ev.kwhMotorway; $('sKwhO').value = V.ev.kwhOther; $('sBatt').value = V.ev.batteryKwh;
   $('sHome').value = V.ev.homeEurKwh; $('sFast').value = V.ev.fastEurKwh;
   $('sMode').value = engineMode();
+  renderPlaceList();
   const dv = tollData(); $('dataVersion').textContent = dv ? dv.note : '';
   $('settings').showModal();
 };
@@ -40,6 +41,114 @@ $('settings').addEventListener('close', () => {
   V.ev.batteryKwh = num('sBatt', V.ev.batteryKwh); V.ev.homeEurKwh = num('sHome', V.ev.homeEurKwh); V.ev.fastEurKwh = num('sFast', V.ev.fastEurKwh);
   saveSettings();
 });
+
+// ---------- private storage on this phone (localStorage) ----------
+const load = (k, def) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? def; } catch { return def; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* private mode */ } };
+const sgn = (v) => (v >= 0 ? '−' : '+') + eur(Math.abs(v));      // a saving shows as "−x €", an extra cost as "+x €"
+const energyWord = (veh) => (veh === 'ev' ? 'électricité' : 'gazole');
+const splitText = (e, veh) => `dont péages ${sgn(e.saveToll)} · ${energyWord(veh)} ${sgn(e.saveEnergy)}`;
+
+// places: [{name, pt}]
+function renderChips() {
+  const places = load('places', []);
+  for (const [box, input, key, list] of [['fromChips', 'from', 'from', 'fromSuggest'], ['toChips', 'to', 'to', 'toSuggest']]) {
+    $(box).innerHTML = '';
+    for (const pl of places) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip'; b.textContent = pl.name;
+      b.onclick = (ev) => { ev.preventDefault(); $(input).value = pl.name; state[key] = pl.pt; $(list).innerHTML = ''; };
+      $(box).appendChild(b);
+    }
+  }
+}
+async function savePlace(key, input) {
+  try {
+    if (!$(input).value.trim()) { showError('Tapez d\'abord une adresse.'); return; }
+    const pt = await resolve(key, input);
+    const name = (prompt('Nom de ce lieu (ex. Maison, Travail) :', $(input).value.split(',')[0]) || '').trim();
+    if (!name) return;
+    const places = load('places', []).filter((p) => p.name !== name);
+    places.push({ name, pt });
+    store('places', places);
+    $(input).value = name;
+    renderChips();
+  } catch (e) { showError(e.message || String(e)); }
+}
+$('btnSaveFrom').onclick = () => savePlace('from', 'from');
+$('btnSaveTo').onclick = () => savePlace('to', 'to');
+function renderPlaceList() {
+  const places = load('places', []);
+  $('placeList').innerHTML = places.length ? '' : '<p class="hint">Aucun lieu. Utilisez ☆ à côté du départ ou de l\'arrivée.</p>';
+  places.forEach((pl) => {
+    const row = document.createElement('div');
+    row.className = 'place';
+    row.innerHTML = `<span>${escapeHtml(pl.name)}</span><button type="button" class="del">Supprimer</button>`;
+    row.querySelector('button').onclick = () => { store('places', load('places', []).filter((p) => p.name !== pl.name)); renderPlaceList(); renderChips(); };
+    $('placeList').appendChild(row);
+  });
+}
+
+// trips: [{id, name, o, d, veh, label, via, saved, savedAt, depart}]
+function saveTrip(e) {
+  const r = state.result;
+  const def = `${r.fromLabel} → ${r.toLabel}${e.isRef ? ' (le plus rapide)' : ''}`;
+  const name = (prompt('Nom de ce trajet :', def) || '').trim();
+  if (!name) return;
+  const trips = load('trips', []);
+  trips.push({ id: Date.now(), name, o: r.o, d: r.d, veh: r.vehKey, label: e.label, via: e.via, savedAt: new Date().toISOString(), depart: r.departLabel,
+    saved: { min: e.min, km: e.km, toll: e.toll, energy: e.energy, cost: e.cost, dMin: e.dMin, save: e.save, saveToll: e.saveToll, saveEnergy: e.saveEnergy } });
+  store('trips', trips);
+  renderTrips();
+  $('trips').scrollIntoView({ behavior: 'smooth' });
+}
+function renderTrips() {
+  const trips = load('trips', []);
+  $('trips').classList.toggle('hidden', !trips.length);
+  $('tripList').innerHTML = '';
+  for (const t of trips) {
+    const s = t.saved, div = document.createElement('div');
+    div.className = 'trip';
+    const gain = s.save > 0.05 ? `−${eur(s.save)} pour +${Math.round(s.dMin)} min (${splitText(s, t.veh)})` : 'itinéraire le plus rapide';
+    div.innerHTML = `<div class="name">${escapeHtml(t.name)}</div>
+      <div class="split">${escapeHtml(t.label)}</div>
+      <div class="split">${t.veh === 'ev' ? 'e-208' : '5008'} · ${hm(s.min)} · ${gain}${t.depart ? ` · calculé pour un départ le ${escapeHtml(t.depart)}` : ''}</div>
+      <div class="actions">
+        <button type="button" class="primary-act" data-a="check">Vérifier</button>
+        <a target="_blank" rel="noopener" href="${googleMapsUrl(t.o, t.d, t.via || [])}">Google Maps</a>
+        <button type="button" data-a="rerun">Relancer l'analyse</button>
+        <button type="button" data-a="del" class="del">Supprimer</button>
+      </div>
+      <div class="check hidden"></div>`;
+    const out = div.querySelector('.check');
+    div.querySelector('[data-a=check]').onclick = async (ev) => {
+      const btn = ev.currentTarget;
+      if (!getKey()) { showError('Entrez d\'abord votre clé TomTom dans les Réglages (⚙︎).'); return; }
+      btn.disabled = true; btn.textContent = 'Vérification…';
+      out.className = 'check'; out.innerHTML = 'Trafic en temps réel…';
+      try {
+        if (!tollData()) await loadTolls();
+        const c = await checkTrip(t, { ...V[t.veh] });
+        out.className = `check ${c.level}`;
+        out.innerHTML = `<b>${c.title}</b>${c.lines.map((l) => `<p>${escapeHtml(l)}</p>`).join('')}`;
+      } catch (e) { out.className = 'check bad'; out.textContent = e.message || String(e); }
+      btn.disabled = false; btn.textContent = 'Vérifier';
+    };
+    div.querySelector('[data-a=rerun]').onclick = () => {
+      state.from = t.o; state.to = t.d;
+      $('from').value = t.name.split(' → ')[0] || 'Départ'; $('to').value = (t.name.split(' → ')[1] || 'Arrivée').replace(/\s*\(.*\)$/, '');
+      document.querySelector(`#vehSeg button[data-v="${t.veh}"]`).click();
+      setNow();
+      $('form').requestSubmit();
+    };
+    div.querySelector('[data-a=del]').onclick = () => {
+      if (!confirm(`Supprimer « ${t.name} » ?`)) return;
+      store('trips', load('trips', []).filter((x) => x.id !== t.id));
+      renderTrips();
+    };
+    $('tripList').appendChild(div);
+  }
+}
 
 // ---------- form ----------
 function setNow() {
@@ -126,7 +235,9 @@ $('form').addEventListener('submit', async (ev) => {
       $('barFill').style.width = `${Math.round(f * 100)}%`;
       $('progressText').textContent = txt;
     }, { estimator: engineMode() });
-    state.result = { ...res, o, d, v, secs: Math.round((Date.now() - t0) / 1000) };
+    const departLabel = depart.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    state.result = { ...res, o, d, v, vehKey: state.veh, fromLabel: $('from').value.split(',')[0], toLabel: $('to').value.split(',')[0],
+      departLabel, secs: Math.round((Date.now() - t0) / 1000) };
     render();
   } catch (e) {
     showError(e.message || String(e));
@@ -149,10 +260,13 @@ function routeCard(e, { compact = false } = {}) {
     <div class="head"><span class="save">${e.isRef ? 'Le plus rapide' : '−' + eur(e.save)}</span><span class="lost">${lost}</span></div>
     ${badges ? `<div>${badges}</div>` : ''}
     <div class="label">${escapeHtml(e.label)}</div>
+    ${e.isRef ? '' : `<div class="split">${splitText(e, state.result.vehKey)}</div>`}
     <div class="meta">${hm(e.min)} · ${Math.round(e.km)} km · péages ${eur(e.toll)} · ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(e.energy)}${e.chargeMin ? ` · recharge ≈ ${Math.round(e.chargeMin)} min` : ''}</div>
     <div class="actions">
       <a class="gm" target="_blank" rel="noopener" href="${googleMapsUrl(o, d, e.via)}">Ouvrir dans Google Maps</a>
+      <button type="button" class="fav">☆ Enregistrer</button>
     </div>`;
+  div.querySelector('.fav').onclick = () => saveTrip(e);
   if (compact) div.querySelector('.label').style.fontWeight = '600';
   return div;
 }
@@ -170,7 +284,7 @@ function render() {
     <p class="hint" style="margin-top:0">dont péages ${eur(f0.toll)}, ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(f0.energy)}</p>
     <p>Économie maximale possible : <b>${eur(f0.cost - cheapest.cost)}</b> pour <b>+${Math.round(cheapest.min - f0.min)} min</b> (${escapeHtml(cheapest.label)}).</p>
     ${wins.length ? `<p>🟢 <b>Gain gratuit :</b> ${escapeHtml(wins[0].label)} — <b>−${eur(wins[0].save)}</b> pour ${Math.round(wins[0].dMin) <= 0 ? 'la même durée' : '+' + Math.round(wins[0].dMin) + ' min'}.</p>` : ''}
-    ${best ? `<p>⭐ <b>Meilleur compromis :</b> ${escapeHtml(best.label)} — <b>−${eur(best.save)}</b> pour <b>+${Math.round(best.dMin)} min</b> (${Math.round(best.pSave * 100)} % de l'économie possible pour ${Math.round(best.pTime * 100)} % du temps en plus).</p>` : ''}`;
+    ${best ? `<p>⭐ <b>Meilleur compromis :</b> ${escapeHtml(best.label)} — <b>−${eur(best.save)}</b> pour <b>+${Math.round(best.dMin)} min</b> (${Math.round(best.pSave * 100)} % de l'économie possible pour ${Math.round(best.pTime * 100)} % du temps en plus), ${splitText(best, state.result.vehKey)}.</p>` : ''}`;
   const maxD = Math.max(10, Math.ceil(Math.max(...eff.map((e) => e.dMin)) / 5) * 5);
   $('budget').max = String(maxD);
   if (+$('budget').value > maxD) $('budget').value = String(Math.min(30, maxD));
@@ -243,5 +357,7 @@ function renderChart() {
   if (q.get('go') === '1') loadTolls().then(() => $('form').requestSubmit());
 })();
 
+renderChips();
+renderTrips();
 loadTolls().catch(() => showError('Impossible de charger les tarifs des péages'));
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

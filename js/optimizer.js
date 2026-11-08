@@ -552,14 +552,10 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     finals.push({ ...c, label: rd.length ? `${c.label} (par ${rd.join(', ')})` : c.label, via: viaOf(c.pieces) });
   }
   const extra = (r, label, kind) => {
-    const p = priceRoute(r, depart);
-    if (p.unpriced) return;
+    const c = evaluateRoute(r, v, depart);
+    if (!c) return;
     const rp = routePoints(r);
-    const c = { label, kind, sec: r.summary.travelTimeInSeconds, km: r.summary.lengthInMeters / 1000, mkm: motorwayKmOf(r, rp),
-      toll: p.toll, details: p.details, via: [rp[Math.floor(rp.length / 3)], rp[Math.floor(2 * rp.length / 3)]] };
-    Object.assign(c, energy(c, v));
-    c.cost = c.toll + c.energy; c.min = c.sec / 60 + c.chargeMin;
-    finals.push(c);
+    finals.push({ ...c, label, kind, via: [rp[Math.floor(rp.length / 3)], rp[Math.floor(2 * rp.length / 3)]] });
   };
   routes.slice(1).forEach((r, i) => extra(r, `Alternative TomTom ${i + 1}`, 'tomtom'));
   freeRoutes.forEach((r, i) => extra(r, i ? `Sans péage (variante ${i})` : 'Sans péage', 'free'));
@@ -585,6 +581,7 @@ function rate(eff, f0) {
   let best = null, bs = -9;
   for (const e of eff) {
     e.dMin = e.min - f0.min; e.save = f0.cost - e.cost;
+    e.saveToll = f0.toll - e.toll; e.saveEnergy = f0.energy - e.energy;      // split of the saving
     e.pSave = S > 0 ? e.save / S : 0; e.pTime = Tm > 0 ? e.dMin / Tm : 0;
     e.score = e.pSave - e.pTime;
     e.freeWin = e !== f0 && e.dMin <= 3 && e.save >= 1;
@@ -598,6 +595,59 @@ export function ladder(eff, budgets = [5, 10, 15, 20, 30, 45, 60, 90]) {
     const ok = eff.filter((e) => e.dMin <= b);
     return { budget: b, route: ok.reduce((a, x) => (x.cost < a.cost ? x : a)) };
   });
+}
+
+// cost of one complete TomTom route (null if a toll cannot be priced)
+export function evaluateRoute(r, v, depart) {
+  const p = priceRoute(r, depart);
+  if (p.unpriced) return null;
+  const rp = routePoints(r);
+  const c = { sec: r.summary.travelTimeInSeconds, km: r.summary.lengthInMeters / 1000, mkm: motorwayKmOf(r, rp), toll: p.toll, details: p.details };
+  Object.assign(c, energy(c, v));
+  c.cost = c.toll + c.energy; c.min = c.sec / 60 + c.chargeMin;
+  return c;
+}
+
+// Live check of a saved trip (2 TomTom requests, traffic now): the saved route through its waypoints, and the fastest
+// route now. Returns the verdict and the reasons, in French, for the app.
+export async function checkTrip(fav, v) {
+  const now = new Date();
+  const opt = { maxSpeed: v.maxSpeed, depart: isoLocal(now), fresh: true };
+  const via = (fav.via || []).slice(0, 9);
+  const [mine, fast] = await Promise.all([
+    route(fav.o, fav.d, { ...opt, via, trafficInfo: true }), route(fav.o, fav.d, opt)]);
+  if (!mine.length) return { level: 'bad', title: 'Itinéraire impossible', lines: ['TomTom ne trouve plus de route par ce chemin (route fermée ?).'] };
+  const r = mine[0], cur = evaluateRoute(r, v, now), f = fast.length ? evaluateRoute(fast[0], v, now) : null;
+  const lines = [];
+  let level = 'ok';
+  const worse = (l) => { if (l === 'bad' || level === 'ok') level = l; };
+  const s = fav.saved;
+  const hmm = (m) => `${Math.floor(Math.round(m) / 60)} h ${String(Math.round(m) % 60).padStart(2, '0')}`;
+  if (cur) lines.push(`Maintenant : ${hmm(cur.min)} (enregistré : ${hmm(s.min)}), péages ${cur.toll.toFixed(2).replace('.', ',')} €.`);
+  // incidents on the saved route
+  const cats = { ROAD_CLOSURE: 'Route fermée', ROAD_WORKS: 'Travaux', ACCIDENT: 'Accident', JAM: 'Bouchon', DANGEROUS_CONDITIONS: 'Danger',
+    LANE_CLOSURE: 'Voie fermée', WEATHER: 'Météo', BROKEN_DOWN_VEHICLE: 'Véhicule en panne', OTHER: 'Incident' };
+  const rp = routePoints(r), cum = cumulative(rp);
+  for (const sct of (r.sections || []).filter((x) => x.sectionType === 'TRAFFIC')) {
+    const delay = Math.round((sct.delayInSeconds || 0) / 60), kind = cats[sct.simpleCategory] || 'Incident';
+    if (sct.simpleCategory === 'ROAD_CLOSURE') { lines.push(`⛔ ${kind} à ${Math.round(cum[sct.startPointIndex])} km du départ.`); worse('bad'); }
+    else if (delay >= 5) { lines.push(`🚗 ${kind} à ${Math.round(cum[sct.startPointIndex])} km du départ : +${delay} min.`); worse('warn'); }
+  }
+  const delayAll = Math.round((r.summary.trafficDelayInSeconds || 0) / 60);
+  if (delayAll >= 10) { lines.push(`Retard total dû au trafic : +${delayAll} min.`); worse('warn'); }
+  if (!cur) { lines.push('Un péage de ce trajet n\'est pas reconnu : l\'itinéraire a changé.'); worse('bad'); }
+  else {
+    if (Math.abs(cur.km - s.km) > Math.max(5, 0.05 * s.km)) { lines.push(`L'itinéraire a changé (${Math.round(cur.km)} km au lieu de ${Math.round(s.km)} km) : déviation ou route fermée ?`); worse('bad'); }
+    if (cur.toll > s.toll + 1) { lines.push(`Plus de péages que prévu (${cur.toll.toFixed(2)} € au lieu de ${s.toll.toFixed(2)} €).`); worse('bad'); }
+    if (cur.min > s.min + Math.max(15, 0.15 * s.min)) { lines.push('Nettement plus long que prévu.'); worse('warn'); }
+  }
+  if (cur && f) {
+    const gap = cur.min - f.min, save = f.cost - cur.cost;
+    lines.push(`Le plus rapide maintenant : ${hmm(f.min)}. Ce trajet : ${gap >= 0 ? '+' : ''}${Math.round(gap)} min pour ${save >= 0 ? '−' : '+'}${Math.abs(save).toFixed(2).replace('.', ',')} € (prévu : +${Math.round(s.dMin)} min, −${s.save.toFixed(2).replace('.', ',')} €).`);
+    if (gap > s.dMin + 15 && save < s.save + 5) { lines.push('Le compromis est moins bon qu\'à l\'enregistrement.'); worse('bad'); }
+  }
+  const title = { ok: '✅ Itinéraire OK', warn: '⚠️ À surveiller', bad: '❌ Relancer l\'analyse conseillé' }[level];
+  return { level, title, lines, at: now.toISOString() };
 }
 
 export function isoLocal(d) {

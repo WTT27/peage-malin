@@ -52,20 +52,23 @@ export function setKey(k) {
 }
 
 // TomTom route; returns an array of routes ([] if no route)
-export async function route(o, d, { avoidTolls = false, maxSpeed = null, depart = null, alternatives = 0, instructions = false, avoidBoxes = null } = {}) {
+export async function route(o, d, { avoidTolls = false, maxSpeed = null, depart = null, alternatives = 0, instructions = false, avoidBoxes = null, via = null, trafficInfo = false, fresh = false } = {}) {
   const key = getKey();
   if (!key) throw new Error('Clé TomTom manquante (voir Réglages)');
   const r6 = (p) => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5];
-  const ck = 'tt' + JSON.stringify([r6(o), r6(d), avoidTolls, maxSpeed, depart && depart.slice(0, 15), alternatives, instructions, avoidBoxes]);
-  if (cache.has(ck)) { stats.cached++; return cache.get(ck); }
-  const stored = await pget(ck, TTL_TOMTOM);
+  const ck = 'tt' + JSON.stringify([r6(o), r6(d), avoidTolls, maxSpeed, depart && depart.slice(0, 15), alternatives, instructions, avoidBoxes, via && via.map(r6), trafficInfo]);
+  // fresh: live check, never answered from the cache
+  if (!fresh && cache.has(ck)) { stats.cached++; return cache.get(ck); }
+  const stored = fresh ? null : await pget(ck, TTL_TOMTOM);
   if (stored) { stats.cached++; cache.set(ck, stored); return stored; }
-  let url = `https://api.tomtom.com/routing/1/calculateRoute/${o[0]},${o[1]}:${d[0]},${d[1]}/json?key=${encodeURIComponent(key)}` +
+  const path = [o, ...(via || []), d].map((p) => `${p[0]},${p[1]}`).join(':');
+  let url = `https://api.tomtom.com/routing/1/calculateRoute/${path}/json?key=${encodeURIComponent(key)}` +
     `&traffic=true&sectionType=tollRoad&sectionType=motorway&maxAlternatives=${alternatives}`;
   if (avoidTolls) url += '&avoid=tollRoads';
   if (maxSpeed) url += `&vehicleMaxSpeed=${maxSpeed}`;
   if (depart) url += `&departAt=${depart}`;
   if (instructions) url += '&instructionsType=coded';
+  if (trafficInfo) url += '&sectionType=traffic';
   for (let attempt = 0; attempt < 6; attempt++) {
     const now = Date.now();                     // ~4 requests / second (free tier limit 5/s)
     const slot = Math.max(now, nextSlot);
