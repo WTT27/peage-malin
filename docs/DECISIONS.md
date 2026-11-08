@@ -134,3 +134,40 @@ Each important decision, with its reason. Newest at the bottom.
 - Labels now show the main roads of the free part ("par N10", "par A12"). TomTom names a road only where there is
   a manoeuvre, so the N12 continuing straight from the A12 appears as "A12".
 - Google Maps link: a 3rd waypoint at 80 % of each free part so Google cannot rejoin the toll road.
+
+## D-025 — The engine must find in-between routes by itself: TomTom detours + an auditor (2026-11-08)
+- Thomas: "I want the app to find the best compromise itself, not wait for me to give it."
+- **Detours found by TomTom:** for every priced piece between interchanges (and for every toll stretch as a whole),
+  TomTom computes the trip with that piece blocked (`avoidAreas`). TomTom itself picks where to leave and rejoin, with
+  live traffic, possibly using another motorway or national road. The detour is cut into "leave at point a, rejoin at b"
+  so it can be combined with options on the other stretches; if its toll cannot be split, it is kept as a whole route.
+  Up to 24 detours per trip (complete method), 4 in the economical method.
+- TomTom ignores a single small blocked spot at some places (e.g. A10 south of Poitiers, km 396–418); a chain of 3 small
+  spots 300 m apart, or a box covering 1–2 km of road, is respected. A second try is made if the first one is ignored.
+- **Auditor** (`tests/audit.mjs`, run by Claude, not in the app): independent, heavier search (TomTom alternatives with
+  and without tolls, 24 forced via-points on both sides of the corridor, blocked spots every 15 km). Any audit route not
+  dominated by the app's efficient routes is a "gap" to fix in the engine. TomTom answers cached on disk.
+- First audit findings, fixed: Bordeaux N10 route timed +16 min by the app vs +11 min as a whole route (now found as a
+  detour: +12 min, −22.55 €); Lyon route crashed (see D-026); only 2 TomTom alternatives requested (now 5, same request).
+
+## D-026 — Toll pricing: chains of tickets and APRR/AREA open barriers (2026-11-08)
+- Lyon trip: A6 toll section marked by TomTom up to 16 km after the Villefranche-Limas barrier → no exit found in the
+  15 km window → whole trip failed. New fallback: cover a toll section with the best chain of tickets and open barriers
+  found along the route (dynamic programming on positions; penalties for gaps and distance to the section ends).
+- APRR/AREA open-system barriers (20, 2026 class 1 prices) transcribed from the image PDF into
+  `data/tolls/aprr_area_open.json`; 16 located (Dordives, Cruseilles ×2, Copponex not located yet).
+- The old "open barriers only" fallback is limited to toll sections shorter than 30 km (it priced 400 km of A6 as 2.80 €).
+- **Detour chains:** TomTom's detour is the fastest way around a toll, not always the cheapest (Lille: avoiding the
+  A14 gives Rouen + A29). Each distinct detour is followed by detours that also block ONE of its own toll sections
+  (one branch per section), giving cheaper, slower whole routes towards toll-free. Up to 12 per trip (3 economical).
+- TomTom alternatives: 5 instead of 2 (same request, no extra cost). Near-identical final routes are merged.
+
+## D-027 — Toll station locations: one road per exit number; scattered names resolved (2026-11-08)
+- Found by the auditor on Lille: "ARRAS NORD (A26) N°7" was placed at exit 7 of the A1 (near Roissy), A26 and A29,
+  because Sanef/SAPN grids cover several motorways and exit numbers repeat. Result: the A1 Paris→Lille was priced
+  1.60 € instead of 18.90 €. 50 stations were affected (whole A26, A1 north, A29, A28…).
+- Fix (tools/build_index.py): pick ONE road per station — the road written in the name "(A26)", else the road whose
+  exit matches the official station name, else the road closest to the neighbouring station of the grid. Stations whose
+  points are still > 60 km apart keep the group closest to the stations they share prices with. Left: 1 (Capbreton).
+- Near-ties between a main-line barrier and an exit next to it (Chamant vs Senlis N°8): the barrier wins, because
+  through traffic pays it.

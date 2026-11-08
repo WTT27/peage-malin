@@ -52,11 +52,11 @@ export function setKey(k) {
 }
 
 // TomTom route; returns an array of routes ([] if no route)
-export async function route(o, d, { avoidTolls = false, maxSpeed = null, depart = null, alternatives = 0, instructions = false } = {}) {
+export async function route(o, d, { avoidTolls = false, maxSpeed = null, depart = null, alternatives = 0, instructions = false, avoidBoxes = null } = {}) {
   const key = getKey();
   if (!key) throw new Error('Clé TomTom manquante (voir Réglages)');
   const r6 = (p) => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5];
-  const ck = 'tt' + JSON.stringify([r6(o), r6(d), avoidTolls, maxSpeed, depart && depart.slice(0, 15), alternatives, instructions]);
+  const ck = 'tt' + JSON.stringify([r6(o), r6(d), avoidTolls, maxSpeed, depart && depart.slice(0, 15), alternatives, instructions, avoidBoxes]);
   if (cache.has(ck)) { stats.cached++; return cache.get(ck); }
   const stored = await pget(ck, TTL_TOMTOM);
   if (stored) { stats.cached++; cache.set(ck, stored); return stored; }
@@ -72,7 +72,11 @@ export async function route(o, d, { avoidTolls = false, maxSpeed = null, depart 
     nextSlot = slot + 260;
     if (slot > now) await sleep(slot - now);
     stats.api++;
-    const r = await fetch(url);
+    // avoidBoxes: [[south, west, north, east], …] areas TomTom must not cross (POST body)
+    const r = avoidBoxes ? await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ avoidAreas: { rectangles: avoidBoxes.map(([s, w, n, e]) => ({
+        southWestCorner: { latitude: s, longitude: w }, northEastCorner: { latitude: n, longitude: e } })) } }) })
+      : await fetch(url);
     if (r.status === 429) { await sleep(1000 * 2 ** attempt); continue; }
     if (r.status === 400 || r.status === 404) { cache.set(ck, []); return []; }
     if (r.status === 403) throw new Error('Clé TomTom refusée ou quota du jour épuisé');

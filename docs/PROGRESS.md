@@ -29,6 +29,15 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 | OPEN-4 | 110 km/h cap | ✅ e-208 only |
 | OPEN-5 | e-208 version / usable battery capacity | ✅ 2022, ~46 kWh usable; 18 kWh/100 km motorway, 15 other roads |
 
+## Audit (tests/audit.mjs), 12 trips from home, Fri 13 Nov 08:00, 5008 — after D-025..D-027
+- 8/12 trips: no route found by the auditor beats the app. Best compromise identical on 10/12 (Bordeaux, Brive: audit
+  version 1–2 min faster, same route). Remaining small gaps: Nantes (+6 min, −2.27 € option missing); very slow toll-free
+  variants on Lille/Clermont/Reims (fixed afterwards: 3 toll-free alternatives requested).
+- Pricing bugs found and fixed by the audit: Lyon (A6 unpriced → crash), Lille (A1 priced 1.60 € instead of 18.90 €).
+- Requests per trip (complete method): 35–105. Valhalla answers this server again (economical method: Brive 15 requests,
+  same best compromise as the complete method).
+- Full output: docs/results/2026-11-08_audit-12-trips.txt
+
 ## Findings from optimizer v3, complete method (Fri 13 Nov 08:00, 5008)
 - Bordeaux: A10 to Poitiers sud then free roads: +16 min, −22.31 € (best compromise) — 62 TomTom requests, 19 s.
 - Brive: free roads to Allaines then motorway: +5 min, −8.92 € — 25 requests, 7 s.
@@ -44,6 +53,7 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 
 ## Next
 - Thomas tests the app on his phone (install on home screen, Google Maps hand-off).
+- Run the auditor on more trips (other origins) and fix remaining gaps (Nantes).
 - Compare economical vs complete method on the test trips once Valhalla accepts this server again.
 - Backlog: breaks / charging stops (with locations), comfort penalty (postponed), while-driving re-check,
   Escota/Arcos tolls, A86 Duplex reverse direction, unnamed stations on Vinci page 4 (Toulouse–Bayonne), Western Europe.

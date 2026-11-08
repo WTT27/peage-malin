@@ -4,6 +4,7 @@ import { km, cumulative, routePoints, bbox, inBox } from './geo.js';
 let D = null; // data
 const localDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const R_END = 3.0;
+const BARRIER = /p[ée]age d|barri[eè]re|\bBPV\b/i;
 
 export async function loadTolls(url = 'data/tolls.json') {
   D = await (await fetch(url)).json();
@@ -106,7 +107,8 @@ export function priceSection(pts, cum, i0, i1, when) {
     if (si.op !== so.op || si === so || po <= pi) continue;
     const p = price(si.op, si.id, so.id);
     if (p === null) continue;
-    const score = Math.abs(pi - s0) + Math.abs(po - s1) + 3 * (di + dO);
+    // main-line barriers ("péage de Chamant") win near-ties against an exit next to them: through traffic pays them
+    const score = Math.abs(pi - s0) + Math.abs(po - s1) + 3 * (di + dO) - (BARRIER.test(si.name) ? 2 : 0) - (BARRIER.test(so.name) ? 2 : 0);
     if (!best || score < best.score) best = { score, price: p, details: [{ op: si.op, from: si.name, to: so.name, price: p }] };
   }
   if (best) return best;
@@ -128,12 +130,54 @@ export function priceSection(pts, cum, i0, i1, when) {
     }
   }
   if (best) return best;
+  const chain = chainPrice(nearM, s0, s1, when);
+  if (chain) return chain;
   const bars = [...nearM].filter(([s, v]) => s.fixed && v.pos >= s0 - 1 && v.pos <= s1 + 1 && v.d < 0.3).sort((a, b) => a[1].pos - b[1].pos);
-  if (bars.length) {
+  if (bars.length && s1 - s0 < 30) {          // open barriers only explain short toll sections
     const details = bars.map(([s]) => ({ op: s.op, from: s.name, to: '(barrière)', price: fixedPrice(s, when) }));
     return { price: details.reduce((a, x) => a + x.price, 0), details };
   }
   return { price: null, details: [] };
+}
+
+// Fallback: cover the section with a chain of tickets (entry→exit pairs) and open barriers met along the route,
+// e.g. A6 Fleury → Villefranche-Limas ticket, then the Quincieux barrier (A46). Lowest score = best fit:
+// distance between the chain's ends and the section's ends + gaps between items + station distance + 2 per item.
+function chainPrice(nearM, s0, s1, when) {
+  const sts = [...nearM].filter(([st, v]) => !st.fixed && v.pos >= s0 - 6 && v.pos <= s1 + 6).sort((a, b) => a[1].pos - b[1].pos);
+  const items = [];
+  for (let i = 0; i < sts.length; i++) for (let j = i + 1; j < sts.length; j++) {
+    const [a, va] = sts[i], [b, vb] = sts[j];
+    if (a.op !== b.op || vb.pos - va.pos < 1) continue;
+    const p = price(a.op, a.id, b.id);
+    if (p !== null) items.push({ start: va.pos, end: vb.pos, pen: 3 * (va.d + vb.d), det: { op: a.op, from: a.name, to: b.name, price: p } });
+  }
+  const bars = [...nearM].filter(([st, v]) => st.fixed && v.d < 0.3 && v.pos >= s0 - 1 && v.pos <= s1 + 1)
+    .map(([st, v]) => ({ start: v.pos, end: v.pos, pen: 0, bar: true, det: { op: st.op, from: st.name, to: '(barrière)', price: fixedPrice(st, when) } }));
+  items.push(...bars);
+  if (!items.length) return null;
+  items.sort((a, b) => a.start - b.start || a.end - b.end);
+  const sc = [], prev = [];
+  for (let i = 0; i < items.length; i++) {
+    sc[i] = Math.abs(items[i].start - s0) + items[i].pen + 2; prev[i] = -1;
+    for (let j = 0; j < i; j++) {
+      if (sc[j] === undefined || items[i].start < items[j].end - 3) continue;
+      const g0 = items[j].end, g1 = items[i].start;
+      if (bars.some((b) => b.start > g0 + 1 && b.start < g1 - 1)) continue;   // a barrier in the gap must be paid
+      const v = sc[j] + Math.max(0, g1 - g0) + items[i].pen + 2;
+      if (v < sc[i]) { sc[i] = v; prev[i] = j; }
+    }
+  }
+  let bi = -1, bv = Infinity;
+  items.forEach((it, i) => {
+    if (bars.some((b) => b.start > it.end + 1 && b.start < s1 - 1)) return;           // barrier after the chain end
+    const v = sc[i] + Math.abs(it.end - s1);
+    if (v < bv) { bv = v; bi = i; }
+  });
+  if (bi < 0 || bv > 30) return null;
+  const details = [];
+  for (let i = bi; i >= 0; i = prev[i]) details.unshift(items[i].det);
+  return { price: details.reduce((a, x) => a + x.price, 0), details };
 }
 
 // Price a TomTom route object. Returns {toll, details, unpriced}

@@ -1,0 +1,51 @@
+
+== bordeaux: app 105 req, audit 56 routes | app best: +12 min −22.55 € Détour TomTom : évite Poitiers sud → SAINT MAIXENT / LUSIGNAN (par N10
+   best compromise over app+audit: +11 min −22.46 € [AUDIT] bloque km 428 (N13 N1013 N154 N12 A28 A11 A10 N10)
+   no gap: app frontier not beaten
+
+== brive: app 54 req, audit 42 routes | app best: +11 min −11.05 € Itinéraire TomTom moins cher (par N154, A71, A20)
+   best compromise over app+audit: +4 min −8.91 € [AUDIT] bloque km 22 (N13 N1013 N154 N12 N1154 N123 N254 A10)
+   no gap: app frontier not beaten
+
+== demangevelle: app 68 req, audit 50 routes | app best: +9 min −13.14 € Détour TomTom : évite le péage Duplex A86 VAUCRESSON→VELIZY + routes g
+   best compromise over app+audit: +9 min −13.14 € [app] Détour TomTom : évite le péage Duplex A86 VAUCRESSON→VELIZY 
+   no gap: app frontier not beaten
+
+== lyon: app 71 req, audit 55 routes | app best: +4 min −9.73 € Détour TomTom : évite le péage Duplex A86 VAUCRESSON→VELIZY (par A12)
+   best compromise over app+audit: +4 min −9.73 € [app] Détour TomTom : évite le péage Duplex A86 VAUCRESSON→VELIZY 
+   no gap: app frontier not beaten
+
+== nantes: app 66 req, audit 44 routes | app best: +63 min −22.87 € Routes gratuites jusqu'à ANCENIS, puis autoroute (par N13, N154, N12)
+   best compromise over app+audit: +63 min −22.87 € [app] Routes gratuites jusqu'à ANCENIS, puis autoroute (par N13, N
+   GAP +6 min −2.27 € (2.27 € better than app at same time) bloque km 257 | N13 N1013 N154 N12 A28 A11 A811
+
+== lille: app 61 req, audit 39 routes | app best: +45 min −30.69 € Sans péage
+   best compromise over app+audit: +45 min −30.69 € [app] Sans péage
+   GAP +86 min −34.11 € (2.93 € better than app at same time) sans péage alt #1 | N13 N31 A29 N25 A1 A25
+   GAP +74 min −32.96 € (1.78 € better than app at same time) sans péage alt #2 | N13 N154 N28 N29 N25 N17 A21 N47
+
+== strasbourg: app 79 req, audit 55 routes | app best: +59 min −44.76 € Alternative TomTom 2
+   best compromise over app+audit: +59 min −44.76 € [app] Alternative TomTom 2
+   no gap: app frontier not beaten
+
+== toulouse: app 54 req, audit 50 routes | app best: +22 min −14.54 € Routes gratuites jusqu'à ORLEANS-CENTRE, puis autoroute (par N154, N12
+   best compromise over app+audit: +109 min −35.27 € [app] Routes gratuites jusqu'à Caussade, puis autoroute (par N154,
+   no gap: app frontier not beaten
+
+== rennes: app 35 req, audit 36 routes | app best: +16 min −13.17 € Itinéraire TomTom moins cher (par N154, N12, A81)
+   best compromise over app+audit: +16 min −13.17 € [app] Itinéraire TomTom moins cher (par N154, N12, A81)
+   no gap: app frontier not beaten
+
+== clermont: app 60 req, audit 52 routes | app best: +6 min −13.08 € Itinéraire TomTom moins cher (par N154, A10, A71)
+   best compromise over app+audit: +111 min −44.20 € [app] Sans péage
+   GAP +160 min −45.37 € (1.17 € better than app at same time) sans péage alt #1 | N154 N1154 N123 N10 N145 N2145
+
+== reims: app 16 req, audit 38 routes | app best: +3 min −6.89 € Alternative TomTom 1
+   best compromise over app+audit: +3 min −6.89 € [app] Alternative TomTom 1
+   GAP +75 min −17.81 € (1.11 € better than app at same time) sans péage alt #1 | N13 N31 N1031 N2 A344
+
+== dijon: app 60 req, audit 48 routes | app best: +12 min −12.61 € Détour TomTom : évite le péage Duplex A86 VAUCRESSON→VELIZY + routes g
+   best compromise over app+audit: +12 min −12.61 € [app] Détour TomTom : évite le péage Duplex A86 VAUCRESSON→VELIZY 
+   no gap: app frontier not beaten
+
+Summary: 8/12 trips without gap, app best compromise kept on 10/12. TomTom: 431 new requests, 835 from disk cache.

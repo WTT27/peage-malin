@@ -17,7 +17,9 @@ const TRANSITION_SEC = 60;   // leaving / joining the motorway
 const MAX_NODES = 12;        // interchanges kept per toll stretch
 const MIN_SKIP = 0.5;        // € — a free piece must avoid at least this toll
 const SHORTLIST_1 = 9, SHORTLIST_2 = 6;
-const APPROACH_KM = 5;       // free bypasses may also start this far before a toll stretch / end this far after it
+const MAX_DETOURS = 24;
+const MAX_CHAIN = 12;        // follow-up detours: block the tolls of a detour too, step by step towards toll-free      // TomTom "avoid this spot" requests per trip (complete method)
+const APPROACH_KM = +(globalThis.PM_APPROACH ?? 5);       // free bypasses may also start this far before a toll stretch / end this far after it
                              // (e.g. A13 → A12 → N12 instead of the A86 Duplex: the bypass leaves at Rocquencourt)
 
 export const DEFAULT_VEHICLES = {
@@ -53,9 +55,11 @@ function motorwayKmOf(r, rp) {
 }
 
 // ---------- the fastest route as a time line ----------
-function mainRoads(r) {
+function mainRoads(r, j0 = 0, j1 = Infinity) {
+  // main A/N roads (≥ 3 km) of a route, or of its part between point indexes j0..j1
   const ins = r.guidance?.instructions || [], len = new Map(), first = new Map();
   for (let i = 0; i < ins.length - 1; i++) {
+    if (ins[i + 1].pointIndex <= j0 || ins[i].pointIndex >= j1) continue;
     const rn = (ins[i].roadNumbers || [])[0];
     if (!rn || !/^[AN]\d/.test(rn)) continue;
     const m = (ins[i + 1].routeOffsetInMeters - ins[i].routeOffsetInMeters) / 1000;
@@ -114,8 +118,8 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   const opt = { maxSpeed: v.maxSpeed, depart: isoLocal(depart) };
   onProgress(0.03, 'Itinéraire le plus rapide…');
   const [routes, freeRoutes] = await Promise.all([
-    route(o, d, { ...opt, alternatives: 2, instructions: true }),
-    route(o, d, { ...opt, avoidTolls: true })]);
+    route(o, d, { ...opt, alternatives: 5, instructions: true }),
+    route(o, d, { ...opt, avoidTolls: true, alternatives: 3 })]);
   if (!routes.length) throw new Error('Aucun itinéraire trouvé');
   const fastest = routes[0];
   const pts = routePoints(fastest), cum = cumulative(pts), N = pts.length - 1;
@@ -271,6 +275,139 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     return { s0: nodes[0].idx, s1: nodes[n - 1].idx, opts };
   });
 
+  // ---- detours found by TomTom itself: block a small spot on the motorway, TomTom picks where to leave and rejoin ----
+  // One spot in the middle of every priced piece between interchanges (complete method) and, per toll stretch, spots on
+  // all its pieces (TomTom finds the best way around the whole stretch, possibly another motorway).
+  const detours = [], wholeDetours = [];
+  async function runDetours() {
+    // TomTom ignores a single small spot at some places (tested on the A10 south of Poitiers), but respects a chain
+    // of small spots or a box covering ~1-2 km of the road. If still ignored: 2nd try elsewhere on the piece.
+    const kmIdx = (x) => { let i = 0; while (i < N && cum[i] < x) i++; return i; };
+    const tiny = (i) => { const [la, lo] = pts[i]; return [la - 0.0004, lo - 0.0006, la + 0.0004, lo + 0.0006]; };
+    const chain = (i) => [-0.3, 0, 0.3].map((dx) => tiny(kmIdx(cum[i] + dx)));
+    const cover = (i, half) => {
+      const ps = []; for (let x = cum[i] - half; x <= cum[i] + half; x += 0.1) ps.push(pts[kmIdx(x)]);
+      const la = ps.map((p) => p[0]), lo = ps.map((p) => p[1]);
+      return [Math.min(...la) - 0.0002, Math.min(...lo) - 0.0003, Math.max(...la) + 0.0002, Math.max(...lo) + 0.0003];
+    };
+    const idxAt = (a, b, f) => { let i = a; while (i < b && cum[i] - cum[a] < (cum[b] - cum[a]) * f) i++; return i; };
+    const reqs = [];
+    allNodes.forEach((nodes) => {
+      const f0 = nodes.hasPre ? 1 : 0, f1 = nodes.hasPost ? nodes.length - 2 : nodes.length - 1;
+      const spots = [];
+      for (let x = f0; x < f1; x++) {
+        const a = nodes[x].idx, b = nodes[x + 1].idx, t = tollBetween(a, b).toll;
+        if (t === null || t < MIN_SKIP || cum[b] - cum[a] < 1) continue;
+        spots.push({ i: idxAt(a, b, 0.5), j: idxAt(a, b, 0.25), t,
+          name: `${x === f0 ? nodes.startName : cleanName(nodes[x].name)} → ${x + 1 === f1 ? nodes.endName : cleanName(nodes[x + 1].name)}` });
+      }
+      if (!spots.length) return;
+      const whole = nodes.title || `${nodes.startName} → ${nodes.endName}`;
+      const pick = spots.length > 10 ? Array.from({ length: 10 }, (_, k) => spots[Math.floor(k * spots.length / 10)]) : spots;
+      reqs.push({ boxes: pick.map((sp) => cover(sp.i, 0.5)), retry: pick.map((sp) => cover(sp.j, 1)), t: spots.reduce((a, sp) => a + sp.t, 0), name: `évite le péage ${whole}` });
+      if (spots.length > 1 && mode === 'tomtom') for (const sp of spots) reqs.push({ boxes: chain(sp.i), retry: [cover(sp.j, 1)], t: sp.t, name: `évite ${sp.name}` });
+    });
+    reqs.sort((a, b) => b.t - a.t);
+    const todo = reqs.slice(0, mode === 'tomtom' ? MAX_DETOURS : 4);
+    const level1 = [];
+
+    // where does a route leave / rejoin the fastest one? (distance to the fastest route's segments, < 30 m)
+    const cosL = Math.cos(pts[0][0] * Math.PI / 180);
+    const segD = (p, A, B) => {
+      const ax = (A[1] - p[1]) * cosL, ay = A[0] - p[0], bx = (B[1] - p[1]) * cosL, by = B[0] - p[0];
+      const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy;
+      const t = L ? Math.max(0, Math.min(1, -(ax * dx + ay * dy) / L)) : 0;
+      return Math.hypot(ax + t * dx, ay + t * dy) * 111.2;
+    };
+    const split = (rp) => {
+      let a = 0, ja = 0;
+      for (let j = 1; j < rp.length; j++) {
+        let f = -1;
+        for (let i = a; i < Math.min(N, a + 600); i++) if (segD(rp[j], pts[i], pts[i + 1]) < 0.03) { f = i; break; }
+        if (f < 0) break;
+        a = f; ja = j;
+      }
+      let b = N, jb = rp.length - 1;
+      for (let j = rp.length - 2; j > ja; j--) {
+        let f = -1;
+        for (let i = b; i > Math.max(0, b - 600); i--) if (segD(rp[j], pts[i - 1], pts[i]) < 0.03) { f = i; break; }
+        if (f < 0) break;
+        b = f; jb = j;
+      }
+      return { a, b, ja, jb };
+    };
+    const ignored = (r) => Math.abs(r.summary.travelTimeInSeconds - fastest.summary.travelTimeInSeconds) < 3 &&
+      Math.abs(r.summary.lengthInMeters - fastest.summary.lengthInMeters) < 50;
+
+    await Promise.all(todo.map(async (q) => {
+      let r = (await route(o, d, { ...opt, instructions: true, avoidBoxes: q.boxes }))[0];
+      const firstTry = r;
+      if (r && ignored(r)) r = (await route(o, d, { ...opt, instructions: true, avoidBoxes: q.retry }))[0];
+      if (!r || ignored(r)) { if (globalThis.PM_DEBUG) console.error('detour ignored', q.name); return; }
+      level1.push({ r, boxes: r === firstTry ? q.boxes : q.retry, name: q.name });
+      const rp = routePoints(r), rc = cumulative(rp);
+      const { a, b, ja, jb } = split(rp);
+      if (b <= a || jb <= ja) { if (globalThis.PM_DEBUG) console.error('detour same', q.name, a, b, ja, jb); return; }
+      const pr = priceRoute(r, depart);
+      const tb = tollBetween(0, a).toll, ta = tollBetween(b, N).toll;
+      if (pr.unpriced) { if (globalThis.PM_DEBUG) console.error('detour unpriced', q.name); return; }
+      if (tb === null || ta === null) { wholeDetours.push({ r, label: `Détour TomTom : ${q.name}` }); return; }   // kept as a whole route
+      const Td = timeline(r, rp, rc);
+      let mk = 0;
+      for (const sct of r.sections || []) if (sct.sectionType === 'MOTORWAY')
+        for (let i = Math.max(sct.startPointIndex + 1, ja + 1); i <= Math.min(sct.endPointIndex, jb); i++) mk += km(rp[i - 1], rp[i]);
+      const at = (f) => rp[Math.floor(ja + (jb - ja) * f)];
+      const roads = mainRoads(r, ja, jb);
+      detours.push({ a, b, label: q.name, piece: { type: 'seg', a, b, sec: Td[jb] - Td[ja], km: rc[jb] - rc[ja], mkm: mk,
+        toll: Math.max(0, pr.toll - tb - ta), details: pr.details, roads, via: [at(0.05), at(0.5), at(0.8)] } });
+      if (globalThis.PM_DEBUG) console.error('detour', q.name, 'km', cum[a].toFixed(1), '→', cum[b].toFixed(1), 'sec', Math.round(Td[jb] - Td[ja]),
+        'vs', Math.round(T[b] - T[a]), 'toll', (pr.toll - tb - ta).toFixed(2), 'vs', tollBetween(a, b).toll, roads);
+    }));
+
+    // ---- chains: TomTom's detour is the FASTEST way around a toll, not always the cheapest (Lille: avoiding the A14
+    // gives Rouen + A29; the Francilienne + A1 is slower but much cheaper). Block the tolls of the detour as well and ask
+    // again, step by step towards toll-free: each step is a cheaper, slower whole route between fastest and toll-free.
+    const sig = (r) => `${Math.round(r.summary.travelTimeInSeconds / 30)}|${Math.round(r.summary.lengthInMeters / 500)}`;
+    const seen = new Set([sig(fastest), ...level1.map((x) => sig(x.r))]);
+    const tollBoxes = (r) => {
+      const rp = routePoints(r), rc = cumulative(rp), out = [];
+      for (const sct of r.sections || []) {
+        if (sct.sectionType !== 'TOLL_ROAD' || rc[sct.endPointIndex] - rc[sct.startPointIndex] < 2) continue;
+        const mid = (rc[sct.startPointIndex] + rc[sct.endPointIndex]) / 2, ps = [];
+        for (let i = sct.startPointIndex; i <= sct.endPointIndex; i++) if (Math.abs(rc[i] - mid) <= 0.5) ps.push(rp[i]);
+        if (!ps.length) ps.push(rp[Math.floor((sct.startPointIndex + sct.endPointIndex) / 2)]);
+        const la = ps.map((p) => p[0]), lo = ps.map((p) => p[1]);
+        out.push([Math.min(...la) - 0.0002, Math.min(...lo) - 0.0003, Math.max(...la) + 0.0002, Math.max(...lo) + 0.0003]);
+      }
+      return out;
+    };
+    let budget = mode === 'tomtom' ? MAX_CHAIN : 3;
+    const uniq = new Map();
+    for (const x of level1) if (!uniq.has(sig(x.r))) uniq.set(sig(x.r), { ...x, toll: priceRoute(x.r, depart).toll });
+    let gen = [...uniq.values()].filter((x) => x.toll > 0.5).sort((a, b) => b.toll - a.toll);
+    while (gen.length && budget > 0) {
+      // children: the parent's blocked spots + ONE more toll section of the parent route (each section is a branch)
+      const kids = [];
+      for (const g of gen) for (const bx of tollBoxes(g.r)) if (g.boxes.length < 10) kids.push({ g, boxes: g.boxes.concat([bx]) });
+      const next = kids.slice(0, budget);
+      budget -= next.length;
+      const res = await Promise.all(next.map(async ({ g, boxes }) => {
+        const r = (await route(o, d, { ...opt, instructions: true, avoidBoxes: boxes }))[0];
+        if (!r || seen.has(sig(r))) return null;
+        seen.add(sig(r));
+        const pr = priceRoute(r, depart);
+        if (pr.unpriced || pr.toll >= g.toll - 0.3) return null;           // must be cheaper than its parent
+        const rd = mainRoads(r);
+        wholeDetours.push({ r, label: `Itinéraire TomTom moins cher${rd.length ? ` (par ${rd.join(', ')})` : ''}`, named: true });
+        if (globalThis.PM_DEBUG) console.error('chain', g.name, '→', Math.round(r.summary.travelTimeInSeconds / 60), 'min', pr.toll.toFixed(2), '€', rd);
+        return { r, boxes, toll: pr.toll, name: g.name + ' +' };
+      }));
+      gen = res.filter((x) => x && x.toll > 0.5).sort((a, b) => b.toll - a.toll);
+    }
+  }
+
+
+  const detourJob = runDetours();
   if (mode === 'tomtom') {
     // complete mode: every free piece used by an option and every escape checked with TomTom
     const jobs = new Map();
@@ -281,6 +418,8 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       onProgress(0.12 + 0.8 * (++n / jobs.size), 'Routes gratuites et sorties (TomTom)…'))));
   }
 
+  await detourJob;
+
   // ---- evaluation of a list of pieces (estimated or confirmed) ----
   function evalPieces(pieces) {
     let sec = 0, kmv = 0, mkm = 0, toll = 0, estimated = false, transitions = 0, prev = null;
@@ -289,7 +428,9 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       if (p.type === 'mw' && p.b <= p.a) continue;
       if (prev && prev !== p.type) transitions++;
       prev = p.type;
-      if (p.type === 'mw') {
+      if (p.type === 'seg') {
+        sec += p.sec; kmv += p.km; mkm += p.mkm; toll += p.toll;
+      } else if (p.type === 'mw') {
         sec += T[p.b] - T[p.a]; kmv += cum[p.b] - cum[p.a]; mkm += mkmPrefix[p.b] - mkmPrefix[p.a];
         const t = tollBetween(p.a, p.b);
         if (t.toll === null) return null;
@@ -341,6 +482,25 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       const lab = combo.filter((x) => x.label).map((x) => x.label).join(' + ');
       out.push({ label: lab.charAt(0).toUpperCase() + lab.slice(1), pieces, kind: 'corridor' });
     }
+    for (const dt of detours) {
+      let cs = [[]];
+      perStretch.forEach((ps, k) => {
+        if (ps.s1 > dt.a && ps.s0 < dt.b) return;           // stretch replaced by the detour
+        const next = [];
+        for (const c of cs) for (const x of lists[k]) next.push([...c, { k, x }]);
+        cs = next.slice(0, 2000);
+      });
+      for (const c of cs) {
+        const items = [...c.map(({ k, x }) => ({ s0: perStretch[k].s0, s1: perStretch[k].s1, pieces: x.pieces, label: x.label })),
+          { s0: dt.a, s1: dt.b, pieces: [dt.piece], label: dt.label }].sort((u, w) => u.s0 - w.s0);
+        const pieces = [];
+        let cur = 0;
+        for (const it of items) { pieces.push(mw(cur, it.s0), ...it.pieces); cur = it.s1; }
+        pieces.push(mw(cur, N));
+        const lab = items.filter((x) => x.label).map((x) => x.label).join(' + ');
+        out.push({ label: 'Détour TomTom : ' + lab, pieces, kind: 'detour' });
+      }
+    }
     for (const e of escapes) {
       const nm = cleanName(e.nd.name);
       out.push(e.kind === 'sortie'
@@ -378,14 +538,15 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   ({ ref, list } = buildAll());
 
   // ---- final list: only confirmed options (+ TomTom fastest / alternatives / toll-free) ----
-  const viaOf = (pieces) => pieces.filter((p) => p.type === 'free').flatMap((p) => {
+  const viaOf = (pieces) => pieces.filter((p) => p.type !== 'mw').flatMap((p) => {
+    if (p.type === 'seg') return p.via;
     const r = real.get(ek(p.A, p.B));
     // start, middle and 80 % of the free part: Google must not rejoin the toll road (e.g. stay on the N12)
     return [p.A === o ? null : p.A, r?.mid, p.B === d ? null : r?.late].filter(Boolean);
   });
   const refC = { ...ref, label: 'Le plus rapide (autoroute)', kind: 'ref', via: [], isRef: true };
   const finals = [refC];
-  const roadsOf = (pieces) => [...new Set(pieces.filter((p) => p.type === 'free').flatMap((p) => real.get(ek(p.A, p.B))?.roads || []))];
+  const roadsOf = (pieces) => [...new Set(pieces.filter((p) => p.type !== 'mw').flatMap((p) => (p.type === 'seg' ? p.roads : real.get(ek(p.A, p.B))?.roads || [])))];
   for (const c of list) if (!c.estimated) {
     const rd = roadsOf(c.pieces);
     finals.push({ ...c, label: rd.length ? `${c.label} (par ${rd.join(', ')})` : c.label, via: viaOf(c.pieces) });
@@ -401,8 +562,15 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     finals.push(c);
   };
   routes.slice(1).forEach((r, i) => extra(r, `Alternative TomTom ${i + 1}`, 'tomtom'));
-  if (freeRoutes.length) extra(freeRoutes[0], 'Sans péage', 'free');
+  freeRoutes.forEach((r, i) => extra(r, i ? `Sans péage (variante ${i})` : 'Sans péage', 'free'));
+  for (const w of wholeDetours) {
+    if (w.named) { extra(w.r, w.label, 'detour'); continue; }
+    const rd = mainRoads(w.r);
+    extra(w.r, rd.length ? `${w.label} (par ${rd.join(', ')})` : w.label, 'detour');
+  }
 
+  // near-identical routes (same time and cost): keep the first one found (corridor options before detours)
+  for (let i = finals.length - 1; i > 0; i--) if (finals.slice(0, i).some((f) => Math.abs(f.min - finals[i].min) < 0.6 && Math.abs(f.cost - finals[i].cost) < 0.25)) finals.splice(i, 1);
   let eff = frontier(finals.filter((c) => c === refC || c.cost < refC.cost - 0.05), 'min', 'cost');
   if (!eff.includes(refC)) eff = [refC, ...eff].sort((a, b) => a.min - b.min);
   rate(eff, refC);

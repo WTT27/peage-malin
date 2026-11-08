@@ -1,0 +1,28 @@
+{
+  "operator": "APRR/AREA",
+  "valid_from": "2026-02-01",
+  "class": 1,
+  "source": "data/raw/aprr-2026-_Systemes_Ouverts_APRR-AREA.pdf (image table, transcribed manually)",
+  "fixed": [
+    {"op": "APRR", "road": "A71", "station": "GERZAT-VILLE", "price": 1.40},
+    {"op": "APRR", "road": "A6", "station": "VILLEFRANCHE-VILLE", "price": 2.80},
+    {"op": "APRR", "road": "A432", "station": "LA BOISSE", "price": 2.40},
+    {"op": "APRR", "road": "A77", "station": "DORDIVES", "price": 6.00},
+    {"op": "APRR", "road": "A77", "station": "LE TOURNEAU", "price": 3.80},
+    {"op": "APRR", "road": "A77", "station": "MYENNES", "price": 4.20},
+    {"op": "APRR", "road": "A466", "station": "QUINCIEUX BARRIERE", "price": 3.60},
+    {"op": "APRR", "road": "A46", "station": "GENAY", "price": 1.70},
+    {"op": "APRR", "road": "A46", "station": "MIONNAY", "price": 1.00},
+    {"op": "APRR", "road": "TML", "station": "LUSSE", "price": 6.80},
+    {"op": "APRR", "road": "A36", "station": "FONTAINE-LARIVIERE", "price": 3.10},
+    {"op": "APRR", "road": "A406", "station": "CROTTET", "price": 0.80},
+    {"op": "APRR", "road": "A719", "station": "VICHY", "price": 1.20},
+    {"op": "AREA", "road": "A410", "station": "CRUSEILLES EST/OUEST A410", "price": 3.20},
+    {"op": "AREA", "road": "A41N", "station": "CRUSEILLES EST/OUEST A41N", "price": 8.00},
+    {"op": "AREA", "road": "A41N", "station": "COPPONEX", "price": 2.90},
+    {"op": "AREA", "road": "A43", "station": "CHIGNIN BRETELLE", "price": 1.00},
+    {"op": "AREA", "road": "A51", "station": "LE CROZET", "price": 4.50},
+    {"op": "AREA", "road": "A432", "station": "SAINT EXUPERY", "price": 2.30},
+    {"op": "AREA", "road": "A43", "station": "CHESNES", "price": 2.30}
+  ]
+}

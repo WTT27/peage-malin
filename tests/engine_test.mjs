@@ -13,13 +13,14 @@ globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) =>
 const key = readFileSync(new URL('../.env', import.meta.url), 'utf8').match(/TOMTOM_KEY=(\S+)/)[1];
 store.tomtomKey = key;
 
+if (process.env.APPROACH) globalThis.PM_APPROACH = process.env.APPROACH;
 const { loadTolls } = await import('../app/js/tolls.js');
 const { analyse, ladder, DEFAULT_VEHICLES, googleMapsUrl } = await import(process.env.ENGINE || '../app/js/optimizer.js');
 const { stats } = await import('../app/js/services.js');
 globalThis.PM_DEBUG = !!process.env.PM_DEBUG;
 await loadTolls();
 const [, , dest, veh = 'diesel', when = '2026-11-13T08:00'] = process.argv;
-const D = { bordeaux: [44.84123, -0.58004], brive: [45.1585, 1.53324], demangevelle: [47.9258, 6.03171] };
+const D = { lille: [50.6292, 3.0573], nantes: [47.2184, -1.5536], lyon: [45.7578, 4.832], bordeaux: [44.84123, -0.58004], brive: [45.1585, 1.53324], demangevelle: [47.9258, 6.03171] };
 const o = [49.00297, 1.3155];
 const t0 = Date.now();
 const r = await analyse(o, D[dest], DEFAULT_VEHICLES[veh], new Date(when), () => {}, { estimator: process.env.MODE || 'tomtom' });

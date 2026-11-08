@@ -72,6 +72,11 @@ def load_exits():
     return exits
 
 
+def dist(a, b):
+    import math
+    return math.hypot(a[0] - b[0], (a[1] - b[1]) * 0.66) * 111
+
+
 def exit_refs(name):
     """Exit numbers in a label; 'X N°15 à Y N°17' means the zone of exits 15..17."""
     nums = re.findall(r'N°\s*(\d+(?:\.\d+)?[A-Za-z]?)', name)
@@ -106,12 +111,44 @@ def main():
     exits = load_exits()
     stations, prices, missing = {}, {}, []
     for op, names, pairs in operators():
-        for n, roads, refs in names:
+        resolved = []          # chosen points of the previous stations of this grid (neighbours)
+        for k_n, (n, roads, refs) in enumerate(names):
             key = f'{op}|{n}'
-            pts = []
+            # exit numbers repeat on every motorway: a grid covering "A1 - A2 - A26 - A29" must not take exit 7 of all
+            # four roads. Choose ONE road: the one written in the name "(A26)", else the one matching the station's
+            # name in the official list, else the one closest to the neighbouring stations of the grid.
+            cand = {}
             for road in roads:
+                pr = []
                 for r in refs:
-                    pts += exits.get((road, r.upper()), [])
+                    pr += exits.get((road, r.upper()), [])
+                if pr:
+                    cand[road] = pr
+            pts = []
+            if len(cand) == 1:
+                pts = list(cand.values())[0]
+            elif cand:
+                m = re.search(r'\((A\d+)\)', n)
+                namepts = [x for v in variants(n) for x in geo.get(v, [])]
+                if m and m.group(1) in cand:
+                    pts = cand[m.group(1)]
+                elif namepts:
+                    road = min(cand, key=lambda rd: min(dist(a, b) for a in cand[rd] for b in namepts))
+                    pts = cand[road]
+                elif resolved:
+                    road = min(cand, key=lambda rd: min(dist(a, b) for a in cand[rd] for b in resolved[-1]))
+                    pts = cand[road]
+                else:   # first of its grid: look ahead to the next station with a single road
+                    nxt = None
+                    for n2, roads2, refs2 in names[k_n + 1:]:
+                        c2 = [x for rd in roads2 for r in refs2 for x in exits.get((rd, r.upper()), [])]
+                        if c2:
+                            nxt = c2
+                            break
+                    road = min(cand, key=lambda rd: min(dist(a, b) for a in cand[rd] for b in (nxt or cand[rd])))
+                    pts = cand[road]
+            if pts:
+                resolved.append(pts)
             for v in (variants(n) if not pts else []):
                 pts += geo.get(v, [])
             if not pts:   # fallback: all tokens of a variant contained in a geo name
@@ -130,9 +167,36 @@ def main():
         for (a, b), p in pairs.items():
             tab[f'{a}|{b}'] = p
             tab.setdefault(f'{b}|{a}', p)
+    # stations whose points are scattered (same name in several places): keep the group of points closest to the
+    # stations it shares prices with (they are on the same motorway network)
+    def groups(pts):
+        gs = []
+        for q in pts:
+            for g in gs:
+                if dist(q, g[0]) < 20:
+                    g.append(q)
+                    break
+            else:
+                gs.append([q])
+        return gs
+    spread = lambda pts: max((dist(a, b) for a in pts for b in pts), default=0)
+    for key, st in stations.items():
+        if spread(st['points']) <= 60:
+            continue
+        op, name = key.split('|', 1)
+        tab = prices.get(op, {})
+        partners = [stations[f'{op}|{b}']['points'] for k in tab for a, b in [k.split('|', 1)]
+                    if a == name and f'{op}|{b}' in stations and 0 < spread(stations[f'{op}|{b}']['points']) <= 60]
+        if not partners:
+            continue
+        def score(g):
+            ds = sorted(min(dist(q, x) for q in g for x in pp) for pp in partners)
+            return ds[len(ds) // 2]
+        st['points'] = min(groups(st['points']), key=score)
     fixed = {}
-    for op, f in [('SAPN', 'sapn.json'), ('SANEF', 'sanef.json')]:
+    for op0, f in [('SAPN', 'sapn.json'), ('SANEF', 'sanef.json'), ('APRR', 'aprr_area_open.json')]:
         for x in json.load(open(ROOT + f)).get('fixed', []):
+            op = x.get('op', op0)
             pts = []
             for v in variants(x['station']):
                 pts += geo.get(v, [])
