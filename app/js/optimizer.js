@@ -70,6 +70,15 @@ function mainRoads(r, j0 = 0, j1 = Infinity) {
     .map(([rn]) => rn).sort((a, b) => first.get(a) - first.get(b));
 }
 
+// polyline thinned to about one point per km
+function sample(rp) {
+  const out = [rp[0]];
+  let acc = 0;
+  for (let i = 1; i < rp.length; i++) { acc += km(rp[i - 1], rp[i]); if (acc >= 1) { out.push(rp[i]); acc = 0; } }
+  if (out[out.length - 1] !== rp[rp.length - 1]) out.push(rp[rp.length - 1]);
+  return out;
+}
+
 function timeline(route, pts, cum) {
   // seconds from departure at every point: anchors at instructions, linear by distance in between
   const T = new Array(pts.length).fill(0);
@@ -170,6 +179,13 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   const flat = allNodes.flat();
   const locals = await resolveLocals(flat.map((nd) => pts[nd.idx]), flat.map((nd) => nd.L || nd.local));
   flat.forEach((nd, i) => { nd.L = locals[i]; });
+  // The off-motorway point of the toll start/end can lie on the wrong side (after the Les Eprunes barrier on the A5:
+  // "leave and come straight back" looked free but is not; Montigny-le-Roi: on the town side of the exit, U-turn).
+  // When the stretch has an approach point on the route itself, free runs start/end there instead.
+  for (const nodes of allNodes) {
+    if (nodes.hasPre) nodes[1].L = null;
+    if (nodes.hasPost) nodes[nodes.length - 2].L = null;
+  }
 
   // ---- Valhalla estimates of free pieces (free service, no TomTom quota) ----
   const est = new Map();             // "A|B" -> {sec, km}
@@ -187,7 +203,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     }
     const rp = routePoints(r[0]);
     real.set(key, { sec: r[0].summary.travelTimeInSeconds, km: r[0].summary.lengthInMeters / 1000, mkm: motorwayKmOf(r[0], rp),
-      mid: rp[Math.floor(rp.length / 2)], late: rp[Math.floor(rp.length * 0.8)], vsec: est.get(key)?.sec, roads: mainRoads(r[0]) });
+      mid: rp[Math.floor(rp.length / 2)], late: rp[Math.floor(rp.length * 0.8)], geo: sample(rp), vsec: est.get(key)?.sec, roads: mainRoads(r[0]) });
   }
   let mode = estimator, notice = null;
   const vJobs = [];
@@ -359,7 +375,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       const at = (f) => rp[Math.floor(ja + (jb - ja) * f)];
       const roads = mainRoads(r, ja, jb);
       detours.push({ a, b, label: q.name, piece: { type: 'seg', a, b, sec: Td[jb] - Td[ja], km: rc[jb] - rc[ja], mkm: mk,
-        toll: Math.max(0, pr.toll - tb - ta), details: pr.details, roads, via: [at(0.05), at(0.5), at(0.8)] } });
+        toll: Math.max(0, pr.toll - tb - ta), details: pr.details, roads, via: [at(0.05), at(0.5), at(0.8)], geo: sample(rp.slice(ja, jb + 1)) } });
       if (globalThis.PM_DEBUG) console.error('detour', q.name, 'km', cum[a].toFixed(1), '→', cum[b].toFixed(1), 'sec', Math.round(Td[jb] - Td[ja]),
         'vs', Math.round(T[b] - T[a]), 'toll', (pr.toll - tb - ta).toFixed(2), 'vs', tollBetween(a, b).toll, roads);
     }));
@@ -538,8 +554,30 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   ({ ref, list } = buildAll());
 
   // ---- final list: only confirmed options (+ TomTom fastest / alternatives / toll-free) ----
+  // Google Maps waypoints: inside each free part, at places at least 1 km away from the fastest route's motorway
+  // (never at an exit: Google would turn there, or take the motorway between two points close to it)
+  const mwGrid = new Map(), cell = (p) => `${Math.floor(p[0] / 0.02)},${Math.floor(p[1] / 0.02)}`;
+  pts.forEach((p, i) => { if (mflag[i] && i % 3 === 0) { const c = cell(p); if (!mwGrid.has(c)) mwGrid.set(c, []); mwGrid.get(c).push(p); } });
+  const offMw = (p) => {
+    const [a, b] = cell(p).split(',').map(Number);
+    let best = 9;
+    for (let x = a - 1; x <= a + 1; x++) for (let y = b - 1; y <= b + 1; y++) for (const q of mwGrid.get(`${x},${y}`) || []) best = Math.min(best, km(p, q));
+    return best;
+  };
+  const pickVia = (geo) => {
+    if (!geo || geo.length < 3) return [];
+    const out = [];
+    for (const [f0, f1] of [[0.1, 0.4], [0.4, 0.7], [0.7, 0.92]]) {
+      let best = null, bo = 1.0;
+      for (let i = Math.floor(geo.length * f0); i < Math.floor(geo.length * f1); i++) { const o2 = offMw(geo[i]); if (o2 > bo) { bo = o2; best = geo[i]; } }
+      if (best) out.push(best);
+    }
+    return out.length ? out : [geo[Math.floor(geo.length / 2)]];
+  };
   const viaOf = (pieces) => pieces.filter((p) => p.type !== 'mw').flatMap((p) => {
-    if (p.type === 'seg') return p.via;
+    if (p.type === 'seg') return pickVia(p.geo);
+    const g = real.get(ek(p.A, p.B))?.geo;
+    if (g) return pickVia(g);
     const r = real.get(ek(p.A, p.B));
     // start, middle and 80 % of the free part: Google must not rejoin the toll road (e.g. stay on the N12)
     return [p.A === o ? null : p.A, r?.mid, p.B === d ? null : r?.late].filter(Boolean);

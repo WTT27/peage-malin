@@ -185,3 +185,13 @@ Each important decision, with its reason. Newest at the bottom.
   and trips live only in the phone's browser storage (localStorage); there is no server of ours. Leaving the phone:
   trip coordinates to TomTom (routing, with Thomas's key), typed addresses to OpenStreetMap Nominatim, diesel price
   request to data.economie.gouv.fr. Limits: lost if browser data is cleared; not synced between devices.
+
+## D-029 — Free parts must start/end on the right side; Google waypoints away from motorways (2026-11-08)
+- Thomas (Demangevelle): a "free gain" told him to leave the A5 and come straight back on; and after the A31 Google
+  turned left into Montigny-le-Roi then made a U-turn towards Bourbonne.
+- Cause: the off-motorway point of a toll section's start/end station can be on the wrong side — after the Les Eprunes
+  barrier (so "free roads Les Eprunes → St-Germain-Laxis" really meant: take a ticket, exit 15, re-enter; modelled
+  −3.41 €, real ≈ −1.30 €), or on the town side of the Montigny exit. Those points were also sent to Google as stops.
+- Fix: when a toll section has an approach point on the route (5 km before / after), free parts start/end there, not
+  at the station's off-motorway point. Google Maps stops are now picked inside each free part, at places ≥ 1 km from
+  the fastest route's motorway (up to 3 per part), never at exits.
