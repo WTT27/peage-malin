@@ -1,5 +1,8 @@
 # Progress
 
+## Restart point
+See **docs/HANDOFF.md** (state, tools, open items, e-208 charging points to discuss).
+
 ## Current status — 2026-11-08 (night)
 Phone app (French, runs entirely in the browser) works end to end: address search, 5008 / e-208, departure time,
 efficient in-between routes (free wins, best compromise, "extra time accepted" slider, chart), "Ouvrir dans
