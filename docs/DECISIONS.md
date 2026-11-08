@@ -38,3 +38,11 @@ Each important decision, with its reason. Newest at the bottom.
 ## D-010 — e-208 energy cost: home charge (Tempo off-peak ≈ 0,14 €/kWh) then 0,54 €/kWh on motorway (2026-11-08)
 - Assumes departure at 100 %. Tempo prices from the 1 Aug 2026 grid (to recheck against EDF yearly).
 - Possible later improvement: use the actual Tempo colour of the night before departure (public data).
+
+## D-011 — TomTom becomes the main routing source; Valhalla is the backup (2026-11-08)
+- TomTom key works (stored in local `.env`, excluded from git). It gives live traffic, toll
+  avoidance (`avoid=tollRoads`), alternatives, and a speed cap (`vehicleMaxSpeed=110` for the e-208).
+- Its durations look more realistic than Valhalla's (Bordeaux: 5 h 45 vs 6 h 51 with tolls).
+
+## D-012 — Diesel price fetched live from government open data (2026-11-08)
+- National average on 2026-11-08: **2,21 €/L** (9,023 stations). Earlier 1,65 €/L figure was wrong.

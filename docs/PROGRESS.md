@@ -1,7 +1,7 @@
 # Progress
 
 ## Current status — 2026-11-08
-Project defined. Feasibility study in progress: routing source validated (Valhalla); toll data approach defined.
+Project defined. Feasibility study in progress: routing ✅ (TomTom main, Valhalla backup), diesel price ✅, toll data next.
 
 ## Roadmap
 
@@ -22,7 +22,7 @@ Project defined. Feasibility study in progress: routing source validated (Valhal
 |---|---|---|
 | OPEN-1 | Value of X | ✅ 10 €/h |
 | OPEN-2 | Consumptions & energy prices | ✅ 15 kWh/100 km, 6 L/100 km; home ≈0,14 €/kWh (Tempo HC), motorway 0,54 €/kWh |
-| OPEN-3 | Live traffic | ✅ yes, TomTom free account (option a) — **Thomas to create the account** |
+| OPEN-3 | Live traffic | ✅ yes, TomTom free account (option a) — account created, key works ✅ |
 | OPEN-4 | 110 km/h cap | ✅ e-208 only |
 | OPEN-5 | e-208 version / usable battery capacity (year of the car?) | waiting for Thomas |
 

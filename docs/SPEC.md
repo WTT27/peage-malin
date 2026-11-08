@@ -30,7 +30,7 @@ Vehicle class: **normal car only** (French toll class 1).
 | Vehicle | Energy | Parameters needed |
 |---|---|---|
 | Peugeot e-208 | Electric | 15 kWh/100 km (mixed roads); **max 110 km/h** (durations recomputed with this cap) |
-| Peugeot 5008 | Diesel | 6 L/100 km; normal speed limits; diesel price fetched from the free French government fuel price data |
+| Peugeot 5008 | Diesel | 6 L/100 km; normal speed limits; diesel price fetched live from the free French government fuel price data (≈2,21 €/L on 2026-11-08) |
 
 **e-208 energy cost model:**
 - Departure with a **100 % battery charged at home** on EDF Tempo, off-peak hours, blue/white days.

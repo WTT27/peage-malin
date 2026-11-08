@@ -24,6 +24,16 @@ Valhalla also returns per-segment details, so we can recompute durations with a
 These are full-toll vs. zero-toll extremes. The interesting routes are the **partial-toll**
 ones in between (step 3). Durations still to be compared with Google Maps.
 
+### TomTom (free account, live traffic) — 2026-11-08, Sunday afternoon
+
+| Trip → Bordeaux | Distance | Duration |
+|---|---|---|
+| Fastest (with tolls) | 633 km | 5 h 45 |
+| Toll-free | 564 km | 7 h 01 |
+| e-208 capped at 110 km/h | 545 km | 6 h 16 (different route chosen) |
+
+The toll-free penalty is much smaller with TomTom (+1 h 16) than with Valhalla (+2 h 02).
+
 ## 2. Toll prices (France)
 
 - **No single national open dataset** found. Each operator (Vinci/ASF/Cofiroute/Escota,
@@ -40,7 +50,7 @@ ones in between (step 3). Durations still to be compared with Google Maps.
 - **Main technical risk:** reliably matching a route to its entry/exit stations.
 
 ## 3. Energy prices
-- Diesel: French government open data (prix-carburants), free, no key.
+- Diesel: French government open data (prix-carburants), free, no key — tested: national average 2,21 €/L on 2026-11-08.
 - Electricity: user-set €/kWh (see open question).
 
 ## Sources
