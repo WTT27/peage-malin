@@ -1,6 +1,6 @@
 // Optimizer v2 (port of tools/optimizer.py): find the good in-between routes.
 import { km, cumulative, routePoints } from './geo.js';
-import { priceRoute, priceSection, stationsNear } from './tolls.js';
+import { priceRoute, priceSection, stationsNear, nearestLocal } from './tolls.js';
 import { route, localPoints } from './services.js';
 
 const TRANSITION_SEC = 60;
@@ -61,14 +61,27 @@ function stretchNodes(pts, cum, i0, i1) {
   const found = stationsNear(pts, cum, i0, i1);
   let nodes = [{ idx: i0, name: 'début du tronçon' }];
   for (const f of found) {
-    if (f.pos - cum[nodes[nodes.length - 1].idx] > 3 && cum[i1] - f.pos > 3) nodes.push({ idx: f.idx, name: f.name });
+    if (f.pos - cum[nodes[nodes.length - 1].idx] > 3 && cum[i1] - f.pos > 3) nodes.push({ idx: f.idx, name: f.name, local: f.local });
   }
   if (nodes.length - 1 > MAX_NODES) {
     const inner = nodes.slice(1), step = inner.length / MAX_NODES;
     nodes = [nodes[0], ...Array.from({ length: MAX_NODES }, (_, k) => inner[Math.floor(k * step)])];
   }
   nodes.push({ idx: i1, name: 'fin du tronçon' });
+  nodes.startName = found.length ? cleanName(found[0].name) : 'début du péage';
+  nodes.endName = found.length ? cleanName(found[found.length - 1].name) : 'fin du péage';
   return nodes;
+}
+
+// ordinary-road points near motorway points: precomputed data first, online lookup only for the rest
+async function resolveLocals(points, preset = []) {
+  const out = points.map((p, i) => preset[i] || nearestLocal(p));
+  const missing = out.map((x, i) => (x ? -1 : i)).filter((i) => i >= 0);
+  if (missing.length) {
+    const found = await localPoints(missing.map((i) => points[i]));
+    missing.forEach((i, j) => { out[i] = found[j]; });
+  }
+  return out;
 }
 
 function priceRun(legs, when) {
@@ -78,25 +91,27 @@ function priceRun(legs, when) {
   return priceSection(pts, cum, 0, pts.length - 1, when).price;
 }
 
-async function optimiseStretch(pts, cum, i0, i1, opt, when, progress) {
-  const nodes = stretchNodes(pts, cum, i0, i1);
+async function optimiseStretch(pts, cum, nodes, localsPromise, opt, when, progress) {
   const P = nodes.map((n) => pts[n.idx]);
   const n = nodes.length;
-  const tollLegs = [], freeLegs = [];
-  for (let j = 0; j < n - 1; j++) {
-    const r = await route(P[j], P[j + 1], opt); tollLegs.push(r[0] || null);
-    progress();
-  }
-  const Lraw = await localPoints(P);
-  const L = Lraw.map((x, j) => x || P[j]);
-  for (let j = 0; j < n - 1; j++) {
-    const r = await route(L[j], L[j + 1], { ...opt, avoidTolls: true });
-    freeLegs.push(r[0] || tollLegs[j]);
-    progress();
-  }
+  const idx = [...Array(n - 1).keys()];
+  const [tollRaw, Lraw] = await Promise.all([
+    Promise.all(idx.map((j) => route(P[j], P[j + 1], opt).then((r) => { progress(); return r[0] || null; }))),
+    localsPromise]);
+  const tollLegs = tollRaw;
+  // a free-road piece needs real off-motorway points at both ends; otherwise it is not offered
+  const freeLegs = await Promise.all(idx.map((j) => (Lraw[j] && Lraw[j + 1])
+    ? route(Lraw[j], Lraw[j + 1], { ...opt, avoidTolls: true }).then((r) => { progress(); return r[0] || null; })
+    : Promise.resolve(null)));
   if (tollLegs.some((x) => !x)) return null;
-  const tm = tollLegs.map(legMetrics), fm = freeLegs.map(legMetrics);
-  freeLegs.forEach((r, j) => { const p = priceRoute(r, when); fm[j].toll = p.unpriced ? null : p.toll; });
+  const tm = tollLegs.map(legMetrics);
+  const fm = freeLegs.map((r) => {
+    if (!r) return { km: 0, sec: 0, mkm: 0, toll: null };
+    const m = legMetrics(r), p = priceRoute(r, when);
+    // a "free" piece that still pays a toll means TomTom could not avoid the motorway: not offered
+    m.toll = p.unpriced || p.toll > 0.5 ? null : p.toll;
+    return m;
+  });
   const runCache = new Map();
   const runPrice = (a, b) => {
     const k = a + '|' + b;
@@ -132,10 +147,12 @@ async function optimiseStretch(pts, cum, i0, i1, opt, when, progress) {
     let transitions = 0;
     for (let x = 0; x < n - 2; x++) if (((mask >> x) & 1) !== ((mask >> (x + 1)) & 1)) transitions++;
     sec += transitions * TRANSITION_SEC;
-    const label = free.length ? free.map(([a, b]) =>
-      `gratuit ${a === 0 ? 'depuis le début' : cleanName(nodes[a].name)} → ${b === n - 1 ? 'la fin' : cleanName(nodes[b].name)}`).join(', ') : 'autoroute';
+    const nm = (i) => (i === 0 ? nodes.startName : i === n - 1 ? nodes.endName : cleanName(nodes[i].name));
+    const label = !free.length ? 'autoroute'
+      : free.length === 1 && free[0][0] === 0 && free[0][1] === n - 1 ? `sans le péage ${nodes.startName} → ${nodes.endName}`
+        : free.map(([a, b]) => `routes gratuites ${nm(a)} → ${nm(b)}`).join(', ');
     // waypoints to force this path in Google Maps: a point in the middle of each free piece
-    const via = free.map(([a, b]) => { const mid = freeLegs[Math.floor((a + b - 1) / 2)]; const mp = routePoints(mid); return mp[Math.floor(mp.length / 2)]; });
+    const via = free.map(([a, b]) => { const mid = freeLegs[Math.floor((a + b - 1) / 2)]; const mp = mid ? routePoints(mid) : []; return mp[Math.floor(mp.length / 2)]; });
     options.push({ km: kmv, sec, mkm, toll, label, mask, via });
   }
   return { nodes, options };
@@ -158,10 +175,17 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
   const tick = (txt) => { done++; onProgress(Math.min(0.97, 0.05 + 0.9 * done / budget), txt); };
 
   const perStretch = [];
-  for (let k = 0; k < stretches.length; k++) {
-    const s = stretches[k];
+  const allNodes = stretches.map((s) => stretchNodes(pts, cum, s.startPointIndex, s.endPointIndex));
+  const allLocals = resolveLocals(allNodes.flat().map((nd) => pts[nd.idx]), allNodes.flat().map((nd) => nd.local));
+  let offset = 0;
+  const stretchRes = await Promise.all(stretches.map((s, k) => {
     const when = new Date(depart.getTime() + 1000 * tt * s.startPointIndex / pts.length);
-    const res = await optimiseStretch(pts, cum, s.startPointIndex, s.endPointIndex, opt, when, () => tick(`Tronçon à péage ${k + 1}/${stretches.length}…`));
+    const a = offset; offset += allNodes[k].length;
+    const mine = allLocals.then((L) => L.slice(a, a + allNodes[k].length));
+    return optimiseStretch(pts, cum, allNodes[k], mine, opt, when, () => tick('Analyse des tronçons à péage…'));
+  }));
+  for (let k = 0; k < stretches.length; k++) {
+    const res = stretchRes[k];
     if (!res) continue;
     const mw = res.options.find((x) => x.mask === 0);
     if (!mw) continue;
@@ -181,41 +205,48 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
     combos = next.length > 20000 ? next.slice(0, 20000) : next;
   }
   for (const combo of combos) {
-    const lab = combo.filter((c) => c.label !== 'autoroute').map((c) => `T${c.stretch + 1} : ${c.label}`);
-    add(lab.join(' + ') || 'Le plus rapide (autoroute)', {
+    const lab = combo.filter((c) => c.label !== 'autoroute').map((c) => c.label);
+    const txt = lab.join(' + ');
+    add(txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : 'Le plus rapide (autoroute)', {
       km: base.km + combo.reduce((a, c) => a + c.dkm, 0), sec: base.sec + combo.reduce((a, c) => a + c.dsec, 0),
       mkm: base.mkm + combo.reduce((a, c) => a + c.dmkm, 0), toll: base.toll + combo.reduce((a, c) => a + c.dtoll, 0),
     }, 'corridor', combo.flatMap((c) => c.via));
   }
 
   // escape routes: motorway to X then free roads (or the reverse) -> national roads (e.g. N10)
+  const jobs = [];
   for (const ps of perStretch) {
     const inner = ps.nodes.slice(1, -1);
-    const Xs = await localPoints(inner.map((nd) => pts[nd.idx]));
+    const Xs = await resolveLocals(inner.map((nd) => pts[nd.idx]), inner.map((nd) => nd.local));
     for (let i = 0; i < inner.length; i++) {
       const X = Xs[i];
       if (!X) continue;
       const nm = cleanName(inner[i].name);
       for (const kind of ['sortie', 'entrée']) {
-        const a = await route(o, X, { ...opt, avoidTolls: kind === 'entrée' }); tick('Sorties et routes nationales…');
-        const b = await route(X, d, { ...opt, avoidTolls: kind === 'sortie' }); tick('Sorties et routes nationales…');
-        if (!a.length || !b.length) continue;
-        const e = evaluateLegs([a[0], b[0]], depart);
-        if (e.unpriced) continue;
-        e.sec += TRANSITION_SEC;
-        const label = kind === 'sortie' ? `Autoroute jusqu'à ${nm}, puis routes gratuites` : `Routes gratuites jusqu'à ${nm}, puis autoroute`;
-        const fp = routePoints(kind === 'sortie' ? b[0] : a[0]);
-        add(label, e, 'escape', [X, fp[Math.floor(fp.length / 2)]]);
+        jobs.push(Promise.all([
+          route(o, X, { ...opt, avoidTolls: kind === 'entrée' }).then((r) => { tick('Sorties et routes nationales…'); return r; }),
+          route(X, d, { ...opt, avoidTolls: kind === 'sortie' }).then((r) => { tick('Sorties et routes nationales…'); return r; }),
+        ]).then(([a, b]) => {
+          if (!a.length || !b.length) return;
+          const e = evaluateLegs([a[0], b[0]], depart);
+          if (e.unpriced) return;
+          e.sec += TRANSITION_SEC;
+          const label = kind === 'sortie' ? `Autoroute jusqu'à ${nm}, puis routes gratuites` : `Routes gratuites jusqu'à ${nm}, puis autoroute`;
+          const fp = routePoints(kind === 'sortie' ? b[0] : a[0]);
+          add(label, e, 'escape', [X, fp[Math.floor(fp.length / 2)]]);
+        }));
       }
     }
   }
+  const freeJob = route(o, d, { ...opt, avoidTolls: true });
+  await Promise.all(jobs);
   routes.slice(1).forEach((r, i) => {
     const e = evaluateLegs([r], depart);
     const rp = routePoints(r);
     if (!e.unpriced) add(`Alternative TomTom ${i + 1}`, e, 'tomtom', [rp[Math.floor(rp.length / 3)], rp[Math.floor(2 * rp.length / 3)]]);
   });
   onProgress(0.97, 'Itinéraire sans péage…');
-  const free = await route(o, d, { ...opt, avoidTolls: true });
+  const free = await freeJob;
   if (free.length) {
     const fp = routePoints(free[0]);
     add('Sans péage', evaluateLegs([free[0]], depart), 'free', [fp[Math.floor(fp.length / 3)], fp[Math.floor(2 * fp.length / 3)]]);
@@ -226,24 +257,31 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
     c.cost = c.toll + c.energy;
     c.min = c.sec / 60 + c.chargeMin;
   }
-  let eff = frontier(cands, 'min', 'cost');
-  const ref = cands.find((c) => c.label === 'Le plus rapide (autoroute)');
-  if (ref && !eff.includes(ref)) { eff = [ref, ...eff.filter((e) => e.cost < ref.cost)].sort((a, b) => a.min - b.min); }
-  rate(eff);
+  let ref = cands.find((c) => c.label === 'Le plus rapide (autoroute)');
+  if (!ref) {                       // tolls of the fastest route could not all be split: use it as is
+    ref = { label: 'Le plus rapide (autoroute)', km: base.km, sec: base.sec, mkm: base.mkm, toll: base.toll, kind: 'corridor', via: [] };
+    Object.assign(ref, energy(ref, v)); ref.cost = ref.toll + ref.energy; ref.min = ref.sec / 60 + ref.chargeMin;
+    cands.push(ref);
+  }
+  ref.isRef = true;
+  // efficient routes, keeping the fastest route as reference (only cheaper routes are worth showing)
+  let eff = frontier(cands.filter((c) => c === ref || c.cost < ref.cost - 0.05), 'min', 'cost');
+  if (!eff.includes(ref)) eff = [ref, ...eff].sort((a, b) => a.min - b.min);
+  rate(eff, ref);
   onProgress(1, 'Terminé');
   return { eff, count: cands.length, fastest, base };
 }
 
 // best compromise, free wins, ladder
-function rate(eff) {
-  const f0 = eff[0], cheapest = eff.reduce((a, b) => (b.cost < a.cost ? b : a));
+function rate(eff, f0) {
+  const cheapest = eff.reduce((a, b) => (b.cost < a.cost ? b : a));
   const S = f0.cost - cheapest.cost, T = Math.max(...eff.map((e) => e.min)) - f0.min;
   let best = null, bs = -9;
   for (const e of eff) {
     e.dMin = e.min - f0.min; e.save = f0.cost - e.cost;
     e.pSave = S > 0 ? e.save / S : 0; e.pTime = T > 0 ? e.dMin / T : 0;
     e.score = e.pSave - e.pTime;
-    e.freeWin = e.dMin <= 3 && e.save >= 1;
+    e.freeWin = e !== f0 && e.dMin <= 3 && e.save >= 1;
     if (e.score > bs && e.pSave > 0 && e.pSave < 1) { bs = e.score; best = e; }
   }
   if (best) best.best = true;
