@@ -13,7 +13,7 @@ Each important decision, with its reason. Newest at the bottom.
 
 ## D-003 — Normal car only, two vehicle profiles: e-208 (electric), 5008 (diesel) (2026-11-08)
 
-## D-004 — Value-of-time rule: "1 hour is worth X €" (2026-11-08)
+## D-004 — Value-of-time rule: "1 hour is worth X €" (2026-11-08) — superseded as main criterion by D-018
 - Generalized cost = tolls + energy + duration × X. Lowest wins.
 
 ## D-005 — UI in French, project documents in English (2026-11-08)
@@ -96,7 +96,8 @@ Each important decision, with its reason. Newest at the bottom.
 - Static site, to be hosted free on GitHub Pages (account WTT27), installable on the home screen.
 - The TomTom key is NOT in the code: entered once in the app settings (or via a link …/#key=…, the part after
   # is never sent to any server) and stored on the phone only.
-- Services called from the phone: TomTom (routes), Overpass/OpenStreetMap (local roads near exits),
+- Services called from the phone: TomTom (routes), Overpass/OpenStreetMap (local roads near exits — replaced
+  by built-in precomputed points, see D-021),
   Nominatim/OpenStreetMap (addresses), data.economie.gouv.fr (diesel price). All free, no account except TomTom.
 - Google Maps hand-off: directions link with up to 9 waypoints placed on the free-road parts, so Google follows
   the chosen in-between route.

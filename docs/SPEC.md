@@ -1,6 +1,6 @@
 # Specification — Toll-aware route optimizer ("Péage Malin", working name)
 
-Status: **draft v0.2** — 2026-11-08. Owner: Thomas (product), Claude (all code & docs).
+Status: **v0.3** — 2026-11-08 (app v0.1 published). Owner: Thomas (product), Claude (all code & docs).
 
 ## 1. Goal
 
@@ -55,16 +55,21 @@ Compute several alternative routes for the same trip, including:
   the most expensive stretches.
 
 Show them as a list and on a **cost vs. duration chart**.
+Implemented (D-019, D-021): each toll stretch is cut at its interchanges and every motorway/free-road
+combination is evaluated, plus "escape" routes (motorway to exit X then national roads, or the reverse).
+Only **efficient** routes are kept (no other route both faster and cheaper).
 
-### F3 — Best route according to the user's value of time
-Rule: **"1 hour of my time is worth X €"** (X adjustable; default to be agreed).
-Starting value: **X = 10 €/h** (a sensitivity check will follow).
-Each route gets a *generalized cost* = total cost (€) + duration (h) × X.
-The app recommends the route with the lowest generalized cost and explains the
-trade-off in plain words (e.g. "+12 min, −6,40 €").
+### F3 — Best in-between route (revised by D-018)
+Original rule "1 hour is worth X €" (X = 10 €/h) was dropped as the main criterion: it tends to pick
+extremes. The app now shows, among efficient routes:
+- the **best compromise** (largest gap between % of maximum saving and % of maximum extra time),
+- **free wins** (≥ 1 € saved for ≤ 3 min lost),
+- a **"how much extra time do I accept?"** slider (0–90 min) giving the cheapest route within that budget.
+€/h remains visible only as a detail. Trade-offs are explained in plain words (e.g. "+16 min, −22,31 €").
 
 ### F4 — Open in Google Maps
-One button opens the selected route in Google Maps (phone app or browser).
+One button opens the selected route in Google Maps (phone app or browser), with up to 9 waypoints
+placed on the free-road parts so Google follows the chosen route.
 
 ### F5 — "While driving" mode (re-check)
 Quick re-check from the current position to the destination, for reacting to accidents
@@ -85,6 +90,7 @@ For each, results will be compared against the official operator toll calculator
 and against Google Maps durations.
 
 ## 7. Future ideas (backlog)
+- **Comfort penalty** for small roads: postponed on purpose (Thomas: "keep it in mind").
 - **Breaks on long trips**: add time for charging / lunch / toilet breaks, and suggest *where*
   (e.g. charging stations for the e-208, rest areas). Breaks also change the cost (charging price).
 

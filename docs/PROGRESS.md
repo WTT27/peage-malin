@@ -14,8 +14,8 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 | 1 | Feasibility study: free routing sources, French toll price data, fuel prices | ✅ done |
 | 2 | Toll cost of one route (F1), checked on the 3 test trips | ✅ prototype (Thomas: "numbers seem quite OK") |
 | 3 | Alternatives + cost/duration chart (F2) | ✅ in the app; optimizer v2 ✅ (corridor combinations + national-road escapes, efficient routes, ladder); chart → in the app |
-| 4 | Value-of-time recommendation (F3) | ✅ prototype + sensitivity 5–50 €/h |
-| 5 | Google Maps hand-off + phone install (F4) | ✅ v0.1 (to be tested by Thomas on his phone) |
+| 4 | Best in-between route (F3, revised by D-018) | ✅ best compromise, free wins, time-budget slider |
+| 5 | Google Maps hand-off + phone install (F4) | ✅ v0.1 published on GitHub Pages — waiting for Thomas's phone test |
 | 6 | "While driving" re-check (F5) | — |
 | 7 | Western Europe | — |
 
@@ -27,7 +27,12 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 | OPEN-2 | Consumptions & energy prices | ✅ 15 kWh/100 km, 6 L/100 km; home ≈0,14 €/kWh (Tempo HC), motorway 0,54 €/kWh |
 | OPEN-3 | Live traffic | ✅ yes, TomTom free account (option a) — account created, key works ✅ |
 | OPEN-4 | 110 km/h cap | ✅ e-208 only |
-| OPEN-5 | e-208 version / usable battery capacity (year of the car?) | waiting for Thomas |
+| OPEN-5 | e-208 version / usable battery capacity | ✅ 2022, ~46 kWh usable; 18 kWh/100 km motorway, 15 other roads |
+
+## Findings from optimizer v3, complete method (Fri 13 Nov 08:00, 5008)
+- Bordeaux: A10 to Poitiers sud then free roads: +16 min, −22.31 € (best compromise) — 62 TomTom requests, 19 s.
+- Brive: free roads to Allaines then motorway: +5 min, −8.92 € — 25 requests, 7 s.
+- Demangevelle: avoiding the A86 Duplex: +15 min, −8.43 € — 36 requests.
 
 ## Findings from optimizer v2 (Fri 13 Nov 08:00)
 - Bordeaux/5008: motorway to Poitiers nord then N10: +26 min, −24.65 € (best compromise).
@@ -38,10 +43,13 @@ Publishing on GitHub Pages: https://wtt27.github.io/peage-malin/
 ## Next
 - Thomas tests the app on his phone (install on home screen, Google Maps hand-off).
 - Compare economical vs complete method on the test trips once Valhalla accepts this server again.
-- Backlog: breaks / charging stops, comfort penalty, while-driving re-check, Escota/Arcos tolls, Western Europe.
+- Backlog: breaks / charging stops (with locations), comfort penalty (postponed), while-driving re-check,
+  Escota/Arcos tolls, A86 Duplex reverse direction, unnamed stations on Vinci page 4 (Toulouse–Bayonne), Western Europe.
+- Valhalla public server refuses this server since the precomputation (ECONNREFUSED); the app falls back to the
+  complete method automatically. Phones are not affected by this server-side block.
 
 ## Known limitations
-- Avoiding the A86 Duplex: v1 estimated +0 min, v2 +13 min (Friday 8:00) — to be checked.
+- Avoiding the A86 Duplex: v1 estimated +0 min, v2 +13 min, v3 +15 min (Friday 8:00) — to be checked on the road.
 - A few variants crossing the Cofiroute/Vinci boundary at Tours are still unpriced (flagged "(!)").
 - Escota, Arcos, A86 Duplex reverse direction (Vélizy→Rueil/Vaucresson) not encoded yet.
 - e-208 charging time is a simple model (45 kW average, 10 min per stop, 10→80 %); no charger location yet.
