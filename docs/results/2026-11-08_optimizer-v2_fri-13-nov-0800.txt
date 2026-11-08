@@ -1,0 +1,169 @@
+################ Demangevelle — diesel — vendredi 13/11 08:00
+  tronçon 1: 0 échangeurs, 2 combinaisons, 2 efficaces
+  tronçon 2: 0 échangeurs, 2 combinaisons, 2 efficaces
+  tronçon 3: 11 échangeurs, 4096 combinaisons, 37 efficaces
+  173 itinéraires évalués, 12 efficaces
+
+      +temps  économie % écon. % temps    durée    coût  itinéraire
+         +0'     0.00€      0%      0%   4 h 12  93.40€  Le plus rapide (autoroute)
+        +10'     2.73€      7%      9%   4 h 22  90.67€  T3: gratuit début → SAINT GERMAIN-LAXIS
+        +13'     8.43€     23%     11%   4 h 25  84.97€  T2: gratuit début → fin
+        +22'    11.17€     30%     20%   4 h 34  82.24€  T2: gratuit début → fin + T3: gratuit début → SAINT GERMAIN-LAXIS
+  ⭐    +29'    14.55€     40%     26%   4 h 42  78.86€  Routes gratuites jusqu'à CHATILLON-LABORDE, puis autoroute
+        +41'    15.63€     43%     37%   4 h 53  77.77€  Routes gratuites jusqu'à MAROLLES-SUR-SEINE, puis autoroute
+        +61'    20.40€     55%     55%   5 h 13  73.00€  Routes gratuites jusqu'à VULAINES, puis autoroute
+        +72'    21.46€     58%     65%   5 h 24  71.95€  Routes gratuites jusqu'à TORVILLIERS, puis autoroute
+        +75'    23.56€     64%     68%   5 h 27  69.84€  Routes gratuites jusqu'à SAINT THIBAULT, puis autoroute
+        +82'    27.52€     75%     74%   5 h 34  65.88€  Routes gratuites jusqu'à MAGNANT, puis autoroute
+       +100'    28.85€     78%     90%   5 h 52  64.56€  Routes gratuites jusqu'à VILLE SOUS LAFERTE, puis autoroute
+       +111'    36.78€    100%    100%   6 h 03  56.63€  Sans péage
+
+  Échelle des économies (meilleur itinéraire avec au plus +N min):
+    + 5 min → économie   0.00 €  (Le plus rapide (autoroute))
+    +10 min → économie   2.73 €  (T3: gratuit début → SAINT GERMAIN-LAXIS)
+    +15 min → économie   8.43 €  (T2: gratuit début → fin)
+    +20 min → économie   8.43 €  (T2: gratuit début → fin)
+    +30 min → économie  14.55 €  (Routes gratuites jusqu'à CHATILLON-LABORDE, puis autoroute)
+    +45 min → économie  15.63 €  (Routes gratuites jusqu'à MAROLLES-SUR-SEINE, puis autoroute)
+    +60 min → économie  15.63 €  (Routes gratuites jusqu'à MAROLLES-SUR-SEINE, puis autoroute)
+    +90 min → économie  27.52 €  (Routes gratuites jusqu'à MAGNANT, puis autoroute)
+  (TomTom: 74 requêtes, 0 en cache)
+################ Bordeaux — diesel — vendredi 13/11 08:00
+  tronçon 1: 11 échangeurs, 2560 combinaisons, 39 efficaces
+  tronçon 2: 12 échangeurs, 320 combinaisons, 34 efficaces
+  1365 itinéraires évalués, 15 efficaces
+
+      +temps  économie % écon. % temps    durée    coût  itinéraire
+         +0'     0.00€      0%      0%   5 h 54 134.12€  Le plus rapide (autoroute)
+         +9'     2.40€      4%      9%   6 h 03 131.73€  T2: gratuit Châtellerault nord → CHATELLERAULT SUD
+        +12'     2.65€      5%     12%   6 h 06 131.47€  Routes gratuites jusqu'à Rouessé-Fontaine, puis autoroute
+        +12'     3.29€      6%     12%   6 h 06 130.83€  T1: gratuit Montabon → Péage de St-Christophe
+        +16'     4.07€      7%     17%   6 h 10 130.05€  Routes gratuites jusqu'à Maresché, puis autoroute
+        +17'     8.81€     16%     17%   6 h 11 125.32€  Routes gratuites jusqu'à Auvours, puis autoroute
+  ⭐    +26'    24.65€     44%     26%   6 h 20 109.48€  Autoroute jusqu'à POITIERS NORD, puis routes gratuites
+        +43'    27.53€     50%     45%   6 h 38 106.60€  Autoroute jusqu'à CHATELLERAULT SUD, puis routes gratuites
+        +45'    28.72€     52%     47%   6 h 40 105.41€  Autoroute jusqu'à Châtellerault nord, puis routes gratuites
+        +71'    35.05€     63%     73%   7 h 05  99.08€  Autoroute jusqu'à NEUILLE-PONT-PIERRE, puis routes gratuites
+        +75'    43.01€     77%     77%   7 h 09  91.11€  Autoroute jusqu'à Montabon, puis routes gratuites
+        +78'    44.12€     79%     81%   7 h 13  90.00€  Autoroute jusqu'à Écommoy, puis routes gratuites
+        +93'    45.68€     82%     96%   7 h 27  88.45€  Autoroute jusqu'à Auvours, puis routes gratuites
+        +93'    48.14€     87%     96%   7 h 27  85.98€  Autoroute jusqu'à LE MANS ZI NORD, puis routes gratuites
+        +97'    55.61€    100%    100%   7 h 31  78.52€  Sans péage
+
+  Échelle des économies (meilleur itinéraire avec au plus +N min):
+    + 5 min → économie   0.00 €  (Le plus rapide (autoroute))
+    +10 min → économie   2.40 €  (T2: gratuit Châtellerault nord → CHATELLERAULT SUD)
+    +15 min → économie   3.29 €  (T1: gratuit Montabon → Péage de St-Christophe)
+    +20 min → économie   8.81 €  (Routes gratuites jusqu'à Auvours, puis autoroute)
+    +30 min → économie  24.65 €  (Autoroute jusqu'à POITIERS NORD, puis routes gratuites)
+    +45 min → économie  27.53 €  (Autoroute jusqu'à CHATELLERAULT SUD, puis routes gratuites)
+    +60 min → économie  28.72 €  (Autoroute jusqu'à Châtellerault nord, puis routes gratuites)
+    +90 min → économie  44.12 €  (Autoroute jusqu'à Écommoy, puis routes gratuites)
+  (TomTom: 0 requêtes, 140 en cache)
+################ Brive — diesel — vendredi 13/11 08:00
+  tronçon 1: 0 échangeurs, 2 combinaisons, 2 efficaces
+  tronçon 2: 7 échangeurs, 256 combinaisons, 26 efficaces
+  68 itinéraires évalués, 9 efficaces
+
+      +temps  économie % écon. % temps    durée    coût  itinéraire
+         +0'     0.00€      0%      0%   5 h 00  91.73€  Le plus rapide (autoroute)
+         +4'     2.53€     11%      6%   5 h 04  89.20€  T2: gratuit SALBRIS → fin
+  ⭐     +6'     8.96€     39%      9%   5 h 06  82.77€  Routes gratuites jusqu'à ALLAINES, puis autoroute
+        +21'     9.59€     42%     36%   5 h 22  82.14€  Routes gratuites jusqu'à ARTENAY, puis autoroute
+        +22'    12.29€     53%     37%   5 h 22  79.44€  Routes gratuites jusqu'à GIDY, puis autoroute
+        +27'    14.33€     62%     45%   5 h 27  77.40€  Routes gratuites jusqu'à ORLEANS-CENTRE, puis autoroute
+        +36'    14.58€     63%     61%   5 h 36  77.15€  Routes gratuites jusqu'à OLIVET, puis autoroute
+        +49'    19.13€     83%     83%   5 h 49  72.61€  Routes gratuites jusqu'à LAMOTTE-BEUVRON, puis autoroute
+        +59'    23.01€    100%    100%   5 h 59  68.72€  Sans péage
+
+  Échelle des économies (meilleur itinéraire avec au plus +N min):
+    + 5 min → économie   2.53 €  (T2: gratuit SALBRIS → fin)
+    +10 min → économie   8.96 €  (Routes gratuites jusqu'à ALLAINES, puis autoroute)
+    +15 min → économie   8.96 €  (Routes gratuites jusqu'à ALLAINES, puis autoroute)
+    +20 min → économie   8.96 €  (Routes gratuites jusqu'à ALLAINES, puis autoroute)
+    +30 min → économie  14.33 €  (Routes gratuites jusqu'à ORLEANS-CENTRE, puis autoroute)
+    +45 min → économie  14.58 €  (Routes gratuites jusqu'à OLIVET, puis autoroute)
+    +60 min → économie  23.01 €  (Sans péage)
+    +90 min → économie  23.01 €  (Sans péage)
+  (TomTom: 46 requêtes, 2 en cache)
+################ Demangevelle — ev — vendredi 13/11 08:00
+  tronçon 1: 0 échangeurs, 2 combinaisons, 2 efficaces
+  tronçon 2: 0 échangeurs, 2 combinaisons, 2 efficaces
+  tronçon 3: 11 échangeurs, 4096 combinaisons, 36 efficaces
+  169 itinéraires évalués, 14 efficaces
+
+      +temps  économie % écon. % temps    durée    coût  itinéraire
+         +0'     0.00€      0%      0%   5 h 38  60.56€  Le plus rapide (autoroute)
+  ⭐     +2'     4.48€     11%      3%   5 h 41  56.08€  Autoroute jusqu'à CHAUMONT-SEMOUTIERS, puis routes gratuites
+        +11'     7.12€     17%     16%   5 h 49  53.44€  Autoroute jusqu'à VILLE SOUS LAFERTE, puis routes gratuites
+        +16'     8.99€     22%     23%   5 h 54  51.57€  T2: gratuit début → fin
+        +25'     9.34€     23%     36%   6 h 04  51.22€  Autoroute jusqu'à MAGNANT, puis routes gratuites
+        +26'    12.01€     29%     37%   6 h 04  48.55€  T2: gratuit début → fin + T3: gratuit début → SAINT GERMAIN-LAXIS
+        +27'    16.67€     41%     39%   6 h 06  43.89€  Routes gratuites jusqu'à CHATILLON-LABORDE, puis autoroute
+        +37'    18.44€     45%     53%   6 h 15  42.12€  Routes gratuites jusqu'à MAROLLES-SUR-SEINE, puis autoroute
+        +41'    23.94€     59%     58%   6 h 19  36.62€  Routes gratuites jusqu'à VULAINES, puis autoroute
+        +49'    25.56€     63%     70%   6 h 27  35.00€  Routes gratuites jusqu'à TORVILLIERS, puis autoroute
+        +49'    26.08€     64%     70%   6 h 27  34.48€  Routes gratuites jusqu'à SAINT THIBAULT, puis autoroute
+        +52'    30.29€     74%     75%   6 h 31  30.28€  Routes gratuites jusqu'à MAGNANT, puis autoroute
+        +68'    32.35€     79%     98%   6 h 47  28.21€  Routes gratuites jusqu'à VILLE SOUS LAFERTE, puis autoroute
+        +70'    40.80€    100%    100%   6 h 48  19.76€  Sans péage
+
+  Échelle des économies (meilleur itinéraire avec au plus +N min):
+    + 5 min → économie   4.48 €  (Autoroute jusqu'à CHAUMONT-SEMOUTIERS, puis routes gratuites)
+    +10 min → économie   4.48 €  (Autoroute jusqu'à CHAUMONT-SEMOUTIERS, puis routes gratuites)
+    +15 min → économie   7.12 €  (Autoroute jusqu'à VILLE SOUS LAFERTE, puis routes gratuites)
+    +20 min → économie   8.99 €  (T2: gratuit début → fin)
+    +30 min → économie  16.67 €  (Routes gratuites jusqu'à CHATILLON-LABORDE, puis autoroute)
+    +45 min → économie  23.94 €  (Routes gratuites jusqu'à VULAINES, puis autoroute)
+    +60 min → économie  30.29 €  (Routes gratuites jusqu'à MAGNANT, puis autoroute)
+    +90 min → économie  40.80 €  (Sans péage)
+  (TomTom: 74 requêtes, 0 en cache)
+################ Bordeaux — ev — vendredi 13/11 08:00
+  tronçon 1: 11 échangeurs, 2560 combinaisons, 36 efficaces
+  tronçon 2: 8 échangeurs, 160 combinaisons, 31 efficaces
+  1151 itinéraires évalués, 7 efficaces
+
+      +temps  économie % écon. % temps    durée    coût  itinéraire
+         +0'     0.00€      0%      0%   8 h 16  62.83€  Routes gratuites jusqu'à Auvours, puis autoroute
+         +3'     0.17€      1%      7%   8 h 20  62.66€  Routes gratuites jusqu'à PARIGNE-L'EVEQUE, puis autoroute
+  ⭐     +8'    12.60€     47%     17%   8 h 24  50.23€  Routes gratuites jusqu'à CHAMBRAY, puis autoroute
+        +22'    18.79€     70%     49%   8 h 38  44.04€  Routes gratuites jusqu'à TOURS CENTRE (SORIGNY), puis autoroute
+        +38'    22.42€     84%     83%   8 h 54  40.41€  Routes gratuites jusqu'à Châtellerault nord, puis autoroute
+        +43'    23.30€     87%     95%   9 h 00  39.53€  Routes gratuites jusqu'à CHATELLERAULT SUD, puis autoroute
+        +45'    26.77€    100%    100%   9 h 02  36.06€  Routes gratuites jusqu'à POITIERS NORD, puis autoroute
+
+  Échelle des économies (meilleur itinéraire avec au plus +N min):
+    + 5 min → économie   0.17 €  (Routes gratuites jusqu'à PARIGNE-L'EVEQUE, puis autoroute)
+    +10 min → économie  12.60 €  (Routes gratuites jusqu'à CHAMBRAY, puis autoroute)
+    +15 min → économie  12.60 €  (Routes gratuites jusqu'à CHAMBRAY, puis autoroute)
+    +20 min → économie  12.60 €  (Routes gratuites jusqu'à CHAMBRAY, puis autoroute)
+    +30 min → économie  18.79 €  (Routes gratuites jusqu'à TOURS CENTRE (SORIGNY), puis autoroute)
+    +45 min → économie  23.30 €  (Routes gratuites jusqu'à CHATELLERAULT SUD, puis autoroute)
+    +60 min → économie  26.77 €  (Routes gratuites jusqu'à POITIERS NORD, puis autoroute)
+    +90 min → économie  26.77 €  (Routes gratuites jusqu'à POITIERS NORD, puis autoroute)
+  (TomTom: 120 requêtes, 0 en cache)
+################ Brive — ev — vendredi 13/11 08:00
+  tronçon 1: 6 échangeurs, 128 combinaisons, 15 efficaces
+  29 itinéraires évalués, 9 efficaces
+
+      +temps  économie % écon. % temps    durée    coût  itinéraire
+         +0'     0.00€      0%      0%   6 h 51  46.43€  Le plus rapide (autoroute)
+  ⭐     +1'     2.70€     15%      3%   6 h 52  43.73€  T1: gratuit SALBRIS → fin
+        +10'     4.39€     25%     29%   7 h 02  42.04€  T1: gratuit début → ARTENAY, gratuit SALBRIS → fin
+        +14'     5.40€     30%     39%   7 h 05  41.03€  T1: gratuit LAMOTTE-BEUVRON → fin
+        +16'     5.46€     31%     43%   7 h 07  40.97€  T1: gratuit GIDY → ORLEANS-CENTRE, gratuit SALBRIS → fin
+        +19'     7.31€     41%     54%   7 h 11  39.12€  T1: gratuit OLIVET → LAMOTTE-BEUVRON, gratuit SALBRIS → fin
+        +26'     9.09€     51%     73%   7 h 17  37.34€  Autoroute jusqu'à OLIVET, puis routes gratuites
+        +33'    10.22€     58%     92%   7 h 24  36.21€  T1: gratuit ARTENAY → GIDY, gratuit OLIVET → LAMOTTE-BEUVRON, gratuit SALBRIS → fin
+        +36'    17.73€    100%    100%   7 h 27  28.70€  Sans péage
+
+  Échelle des économies (meilleur itinéraire avec au plus +N min):
+    + 5 min → économie   2.70 €  (T1: gratuit SALBRIS → fin)
+    +10 min → économie   2.70 €  (T1: gratuit SALBRIS → fin)
+    +15 min → économie   5.40 €  (T1: gratuit LAMOTTE-BEUVRON → fin)
+    +20 min → économie   7.31 €  (T1: gratuit OLIVET → LAMOTTE-BEUVRON, gratuit SALBRIS → fin)
+    +30 min → économie   9.09 €  (Autoroute jusqu'à OLIVET, puis routes gratuites)
+    +45 min → économie  17.73 €  (Sans péage)
+    +60 min → économie  17.73 €  (Sans péage)
+    +90 min → économie  17.73 €  (Sans péage)
+  (TomTom: 40 requêtes, 0 en cache)

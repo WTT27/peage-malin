@@ -12,7 +12,7 @@ join late on each toll stretch) → recommendation with X €/h + sensitivity. R
 | 0 | Definition, documents | ✅ done |
 | 1 | Feasibility study: free routing sources, French toll price data, fuel prices | ✅ done |
 | 2 | Toll cost of one route (F1), checked on the 3 test trips | ✅ prototype (Thomas: "numbers seem quite OK") |
-| 3 | Alternatives + cost/duration chart (F2) | 🔄 alternatives ✅ (CLI table), chart → in the app |
+| 3 | Alternatives + cost/duration chart (F2) | 🔄 optimizer v2 ✅ (corridor combinations + national-road escapes, efficient routes, ladder); chart → in the app |
 | 4 | Value-of-time recommendation (F3) | ✅ prototype + sensitivity 5–50 €/h |
 | 5 | Google Maps hand-off + phone install (F4) | — |
 | 6 | "While driving" re-check (F5) | — |
@@ -28,7 +28,14 @@ join late on each toll stretch) → recommendation with X €/h + sensitivity. R
 | OPEN-4 | 110 km/h cap | ✅ e-208 only |
 | OPEN-5 | e-208 version / usable battery capacity (year of the car?) | waiting for Thomas |
 
+## Findings from optimizer v2 (Fri 13 Nov 08:00)
+- Bordeaux/5008: motorway to Poitiers nord then N10: +26 min, −24.65 € (best compromise).
+- Brive/5008: free roads to Allaines then A10/A71: +6 min, −8.96 €.
+- Demangevelle/5008: free roads to Châtillon-Laborde then A5: +29 min, −14.55 €.
+- e-208: some partly free routes are both faster AND cheaper than TomTom's fastest (less energy → less charging).
+
 ## Known limitations
+- Avoiding the A86 Duplex: v1 estimated +0 min, v2 +13 min (Friday 8:00) — to be checked.
 - A few variants crossing the Cofiroute/Vinci boundary at Tours are still unpriced (flagged "(!)").
 - Escota, Arcos, A86 Duplex reverse direction (Vélizy→Rueil/Vaucresson) not encoded yet.
 - e-208 charging time is a simple model (45 kW average, 10 min per stop, 10→80 %); no charger location yet.

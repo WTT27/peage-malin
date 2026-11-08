@@ -309,6 +309,10 @@ def analyse(o, d, veh, depart, verbose=True):
         c['cost'] = c['toll'] + c['energy']
         c['min'] = c['sec'] / 60 + c['charge_min']
     eff = frontier(cands, 'min', 'cost')
+    ref = next((c for c in cands if c['label'] == 'Le plus rapide (autoroute)'), None)
+    if ref is not None and ref not in eff:          # always show the fastest route as the reference
+        eff = [ref] + [e for e in eff if e['cost'] < ref['cost']]
+        eff.sort(key=lambda e: e['min'])
     return base, eff, cands
 
 
