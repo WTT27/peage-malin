@@ -23,9 +23,18 @@ Each important decision, with its reason. Newest at the bottom.
 ## D-006 — Starting value X = 10 €/h; consumptions e-208 15 kWh/100 km, 5008 6 L/100 km; max 110 km/h (2026-11-08)
 - Sensitivity check on X planned later.
 
-## D-007 — No live traffic in the app (2026-11-08)
-- **Decision:** option (b): traffic is left to Google Maps after hand-off. No TomTom account.
+## D-007 — Live traffic via free TomTom developer account (2026-11-08, revised same day)
+- First recorded as option (b) by mistake; Thomas corrected to **option (a)**.
+- Free tier: 2,500 non-tile requests/day (routing included). Card-free sign-up to be confirmed
+  at account creation; if a card is required → fall back to (b).
+- The TomTom key is personal: it will not be stored in any public place.
 
 ## D-008 — Valhalla public server as routing source for the prototype (2026-11-08)
 - **Why:** free, no key, supports toll avoidance and alternatives. OSRM demo cannot avoid tolls.
   OpenRouteService kept as backup. See FEASIBILITY.md.
+
+## D-009 — 110 km/h cap applies to the e-208 only (2026-11-08)
+
+## D-010 — e-208 energy cost: home charge (Tempo off-peak ≈ 0,14 €/kWh) then 0,54 €/kWh on motorway (2026-11-08)
+- Assumes departure at 100 %. Tempo prices from the 1 Aug 2026 grid (to recheck against EDF yearly).
+- Possible later improvement: use the actual Tempo colour of the night before departure (public data).

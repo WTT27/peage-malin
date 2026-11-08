@@ -21,9 +21,10 @@ Project defined. Feasibility study in progress: routing source validated (Valhal
 | # | Question | Status |
 |---|---|---|
 | OPEN-1 | Value of X | ✅ 10 €/h |
-| OPEN-2 | Consumptions | ✅ 15 kWh/100 km, 6 L/100 km. **Still open:** electricity price €/kWh (assumed 0,40) |
-| OPEN-3 | Live traffic | ✅ no (option b) |
-| OPEN-4 | Does the 110 km/h cap apply to the 5008 too? | waiting for Thomas (assumed yes) |
+| OPEN-2 | Consumptions & energy prices | ✅ 15 kWh/100 km, 6 L/100 km; home ≈0,14 €/kWh (Tempo HC), motorway 0,54 €/kWh |
+| OPEN-3 | Live traffic | ✅ yes, TomTom free account (option a) — **Thomas to create the account** |
+| OPEN-4 | 110 km/h cap | ✅ e-208 only |
+| OPEN-5 | e-208 version / usable battery capacity (year of the car?) | waiting for Thomas |
 
 ## Known limitations
 - Toll prices change every 1 February → yearly data refresh needed.

@@ -29,11 +29,15 @@ Vehicle class: **normal car only** (French toll class 1).
 
 | Vehicle | Energy | Parameters needed |
 |---|---|---|
-| Peugeot e-208 | Electric | 15 kWh/100 km (mixed roads); electricity price €/kWh — **to confirm** (assumed 0,40 €/kWh) |
-| Peugeot 5008 | Diesel | 6 L/100 km; diesel price fetched from the free French government fuel price data |
+| Peugeot e-208 | Electric | 15 kWh/100 km (mixed roads); **max 110 km/h** (durations recomputed with this cap) |
+| Peugeot 5008 | Diesel | 6 L/100 km; normal speed limits; diesel price fetched from the free French government fuel price data |
 
-Driving style: **max 110 km/h**, even where 130 is allowed → durations are recomputed with
-this cap (this shrinks the time advantage of motorways).
+**e-208 energy cost model:**
+- Departure with a **100 % battery charged at home** on EDF Tempo, off-peak hours, blue/white days.
+  Home price ≈ **0,14 €/kWh** (Aug 2026 grid: blue HC 0,1356, white HC 0,1536, weighted by
+  ~300 blue / ~43 white days). Value editable.
+- Energy beyond the home charge is bought on motorway fast chargers at **0,54 €/kWh**.
+- Battery usable capacity: **to confirm** (depends on e-208 version, ~46 or ~48 kWh).
 
 The user picks the vehicle before each search. Default values are proposed, user can edit.
 
@@ -65,8 +69,9 @@ One button opens the selected route in Google Maps (phone app or browser).
 Quick re-check from the current position to the destination, for reacting to accidents
 or traffic jams. Must be usable in one or two taps (ideally by a passenger — the app
 must not encourage handling the phone while driving).
-**Decided (D-007):** no live traffic in the app; the app proposes toll-saving alternatives from
-the current position, and Google Maps (which knows the traffic) handles traffic once the route is opened.
+**Decided (D-007, revised):** live traffic via a **free TomTom developer account** (created by
+Thomas; 2,500 requests/day free). Traffic-aware durations are used to compare routes. If TomTom
+asks for a credit card at sign-up, we stop and fall back to "traffic handled by Google Maps".
 
 ## 6. Test trips (reference cases)
 
