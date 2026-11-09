@@ -18,8 +18,7 @@ everything must be reported to him in the terminal, in plain words (he is not a 
 
 1. TomTom fastest route (with instructions → time line) + 5 alternatives + 3 toll-free variants.
 2. Corridor: each toll section cut at its priced interchanges (max 12) + approach points 5 km before/after; every
-   motorway / free-roads combination; free pieces checked with TomTom (complete method) or estimated with Valhalla
-   (economical method, option in Réglages).
+   motorway / free-roads combination; free pieces checked with TomTom (économe method removed, D-036)
 3. Escapes: "motorway to X then free roads" / "free roads to X then motorway" — now combined with the options of the
    other toll sections (D-032).
 4. TomTom detours: blocked spots (avoidAreas, chains of small boxes / 1–2 km boxes) on each priced piece and whole toll

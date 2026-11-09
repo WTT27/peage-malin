@@ -299,3 +299,19 @@ MyPeugeot app, driving 10 km and reading again. He wants it automatic and offere
   complete method (notice shown). On the one real comparison (Bordeaux) économe used 21 TomTom requests instead of 103
   but missed a 16 € saving (best compromise +20 min −13.54 € instead of +12 min −22.55 €). Decision: complète stays the
   default; économe is not recommended.
+
+## D-036 — Économe method removed; one Google Maps link by default, fewer stops (2026-11-09)
+- Thomas: "remove the économe, it is useless" (D-035 results). Removed from the app (settings choice, Valhalla calls,
+  estimate/shortlist code) and from the tests (`compare_all.mjs`, `compare_modes.mjs` deleted). Valhalla stays only
+  for the one-time off-motorway points precomputation (data files).
+- Thomas: switching between two Google links while driving is not practical, and short routes had many stops.
+  - Options start with few stops: both ends of each avoided toll part, then one per ~40 km (before: always filled up
+    to 9). `refineVia` (run on "Ouvrir dans Google Maps") adds stops only where its TomTom check finds Google would
+    pay a toll the option avoids **or leave the option's roads** (new: parts of the line > 1.5 km from the test
+    route); toll-free options are checked with "avoid tolls"; the e-208 charging stops are part of the check.
+  - One link by default. Two links only when that check fails on a "motorway to X, then free roads" option; each part
+    is then checked on its own (`refineLegs`). The card shows one button; the two buttons and the explanation appear
+    after the tap only when needed.
+- Results (`tests/google_follow.mjs`): diesel 113/116 followed (was 111), two links on 17 options (was every
+  "then free roads" option), average 6.6 stops (was ~9), 20 options with ≤ 3 stops; e-208 30/31 (unchanged).
+  Remaining: Clermont "Autre itinéraire (par N154, A10, A71)", two Toulouse options (2–4.50 € more).

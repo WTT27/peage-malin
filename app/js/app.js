@@ -1,5 +1,5 @@
 import { loadTolls, tollData } from './tolls.js';
-import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName, refineVia, splitTrip } from './optimizer.js';
+import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName, refineVia, refineLegs } from './optimizer.js';
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 import { mergeStops } from './charging.js';
@@ -19,7 +19,6 @@ function loadSettings() {
   return { diesel: { ...DEFAULT_VEHICLES.diesel, ...(s.diesel || {}) }, ev };
 }
 let V = loadSettings();
-const engineMode = () => { try { return localStorage.getItem('engineMode') || 'tomtom'; } catch { return 'tomtom'; } };
 const saveSettings = () => { try { localStorage.setItem('vehicles', JSON.stringify(V)); } catch { /* ignore */ } };
 
 // key passed once in the URL fragment: …/#key=XXXX  (never sent to any server)
@@ -36,7 +35,6 @@ $('btnSettings').onclick = () => {
   $('sKwhM').value = V.ev.kwhMotorway; $('sKwhMW').value = V.ev.kwhMotorwayWinter; $('sLunch').value = V.ev.lunchMin;
   $('sReserve').value = V.ev.reservePct; $('sKwhO').value = V.ev.kwhOther; $('sBatt').value = V.ev.batteryKwh;
   $('sHome').value = V.ev.homeEurKwh; $('sFast').value = V.ev.fastEurKwh;
-  $('sMode').value = engineMode();
   $('sCar').value = carTopic();
   renderPlaceList();
   const dv = tollData(); $('dataVersion').textContent = dv ? dv.note : '';
@@ -58,7 +56,7 @@ $('settings').addEventListener('close', () => {
   V.ev.kwhMotorway = num('sKwhM', V.ev.kwhMotorway); V.ev.kwhOther = num('sKwhO', V.ev.kwhOther);
   V.ev.kwhMotorwayWinter = num('sKwhMW', V.ev.kwhMotorwayWinter); V.ev.lunchMin = num('sLunch', V.ev.lunchMin);
   V.ev.reservePct = num('sReserve', V.ev.reservePct);
-  try { localStorage.setItem('engineMode', $('sMode').value); } catch { /* ignore */ }
+  try { localStorage.removeItem('engineMode'); } catch { /* ignore */ }
   V.ev.batteryKwh = num('sBatt', V.ev.batteryKwh); V.ev.homeEurKwh = num('sHome', V.ev.homeEurKwh); V.ev.fastEurKwh = num('sFast', V.ev.fastEurKwh);
   saveSettings();
 });
@@ -184,7 +182,7 @@ function saveTrip(e) {
   const name = (prompt('Nom de ce trajet :', def) || '').trim();
   if (!name) return;
   const trips = load('trips', []);
-  trips.push({ id: Date.now(), name, o: r.o, d: r.d, veh: r.vehKey, label: e.label, via: viaOf(e), legs: e.isRef ? null : splitTrip(r.o, r.d, e, viaOf(e)), legName: e.split?.name, freeFirst: e.split?.freeFirst, savedAt: new Date().toISOString(), depart: r.departLabel,
+  trips.push({ id: Date.now(), name, o: r.o, d: r.d, veh: r.vehKey, label: e.label, via: viaOf(e), legs: legsOf(r.o, r.d, e)?.map(({ line, ...L }) => L) || null, legName: e.split?.name, freeFirst: e.split?.freeFirst, savedAt: new Date().toISOString(), depart: r.departLabel,
     saved: { min: e.min, km: e.km, toll: e.toll, energy: e.energy, cost: e.cost, dMin: e.dMin, save: e.save, saveToll: e.saveToll, saveEnergy: e.saveEnergy } });
   store('trips', trips);
   renderTrips();
@@ -331,11 +329,11 @@ $('form').addEventListener('submit', async (ev) => {
     }
     const depart = $('when').value ? new Date($('when').value) : new Date();
     const t0 = Date.now();
-    stats.api = 0; stats.cached = 0; stats.valhalla = 0;
+    stats.api = 0; stats.cached = 0;
     const res = await analyse(o, d, v, depart, (f, txt) => {
       $('barFill').style.width = `${Math.round(f * 100)}%`;
       $('progressText').textContent = txt;
-    }, { estimator: engineMode() });
+    });
     const departLabel = depart.toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     state.result = { ...res, o, d, v, vehKey: state.veh, fromLabel: $('from').value.split(',')[0], toLabel: $('to').value.split(',')[0],
       departLabel, depart, secs: Math.round((Date.now() - t0) / 1000) };
@@ -350,16 +348,17 @@ $('form').addEventListener('submit', async (ev) => {
 
 // ---------- results ----------
 const viaOf = (e) => (e.charge && e.charge.ok && e.charge.stops.length ? mergeStops(e.line || [], e.via || [], e.charge.stops.map((x) => x.p)) : e.via || []);
-// Google Maps link(s) of an option: one link, or two for "motorway to X, then free roads" (and the reverse), the free
-// part to be driven with "Éviter les péages" (9 stops cannot hold Google on a long free stretch, D-035)
+// Google Maps link(s) of an option: one link; two only for "motorway to X, then free roads" (and the reverse) when the
+// check before opening finds that 9 stops cannot hold Google on the free stretch (e.twoLinks, D-035/D-036)
+const legsOf = (o, d, e) => (e.twoLinks && !e.isRef ? e.legs : null);
 function gmLinks(o, d, e) {
-  const legs = splitTrip(o, d, e, viaOf(e));
+  const legs = legsOf(o, d, e);
   if (!legs) return [{ href: googleMapsUrl(o, d, viaOf(e)), text: 'Ouvrir dans Google Maps' }];
   const nm = e.split.name;
   return legs.map((L, i) => ({ href: googleMapsUrl(i ? null : L.from, L.to, L.via), avoid: L.avoidTolls,
     text: i ? `② De ${nm} à l'arrivée` : `① Jusqu'à ${nm}` }));
 }
-const legsHint = (nm, freeFirst) => `<div class="split">👉 S'ouvre en 2 parties dans Google Maps. Partie ${freeFirst ? '①' : '②'} (routes gratuites) : activez « Éviter les péages » (Options). Ouvrez la partie ② en arrivant à ${escapeHtml(nm)}.</div>`;
+const legsHint = (nm, freeFirst) => `<div class="split legs">👉 Pour ce trajet, Google Maps ne suit pas l'itinéraire en un seul lien : il s'ouvre en 2 parties. Partie ${freeFirst ? '①' : '②'} (routes gratuites) : activez « Éviter les péages » (Options). Ouvrez la partie ② en arrivant à ${escapeHtml(nm)}.</div>`;
 const hhmm = (h) => `${Math.floor(h) % 24} h ${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
 function chargeHtml(e) {
   const c = e.charge;
@@ -384,32 +383,43 @@ function routeCard(e, { compact = false } = {}) {
     <div class="label">${escapeHtml(e.label)}</div>
     ${e.isRef ? '' : `<div class="split">${splitText(e, state.result.vehKey)}</div>`}
     <div class="split">Péages payés : ${escapeHtml(tollsText(e.details))}</div>
-    ${e.kind === 'free' && e.toll < 0.05 ? '<div class="split">👉 Dans Google Maps, activez aussi « Éviter les péages » (Options) pour être sûr de rester sur cet itinéraire.</div>' : ''}
+    ${!e.isRef && e.toll < 0.05 ? '<div class="split">👉 Dans Google Maps, activez aussi « Éviter les péages » (Options) pour être sûr de rester sur cet itinéraire.</div>' : ''}
     ${chargeHtml(e)}
     <div class="meta">${hm(e.min)} · ${Math.round(e.km)} km · péages ${eur(e.toll)} · ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(e.energy)}${e.chargeMin ? ` · dont recharge ${Math.round(e.chargeMin)} min` : ''}</div>
-    ${e.split && !e.isRef ? legsHint(e.split.name, e.split.freeFirst) : ''}
-    <div class="actions${e.split && !e.isRef ? ' two' : ''}">
-      ${gmLinks(o, d, e).map((l, i) => `<a class="gm" data-i="${i}" target="_blank" rel="noopener" href="${l.href}">${escapeHtml(l.text)}</a>`).join('')}
+    <div class="hint2"></div>
+    <div class="actions"><span class="gms"></span>
       <button type="button" class="fav">☆ Enregistrer</button>
     </div>`;
-  // Google Maps: stops checked (and completed if needed) just before opening
+  const showLinks = () => {
+    const two = !!legsOf(o, d, e);
+    div.querySelector('.hint2').innerHTML = two ? legsHint(e.split.name, e.split.freeFirst) : '';
+    div.querySelector('.actions').classList.toggle('two', two);
+    div.querySelector('.gms').outerHTML = `<span class="gms">${gmLinks(o, d, e).map((l, i) => `<a class="gm" data-i="${i}" target="_blank" rel="noopener" href="${l.href}">${escapeHtml(l.text)}</a>`).join('')}</span>`;
+    for (const gm of div.querySelectorAll('.gm')) {
+      gm.onclick = async (ev) => {
+        if (e.refined || e.isRef) return;          // already checked: normal link
+        ev.preventDefault();
+        gm.textContent = 'Préparation de l\'itinéraire…';
+        await prepare();
+        showLinks();
+        if (e.twoLinks) return;                    // two parts: the user reads the hint and opens ① then ②
+        location.href = div.querySelector('.gm').href;
+      };
+    }
+  };
+  // Google Maps: stops checked (and completed if needed) just before opening; two links only if one cannot work
   const prepare = async () => {
     if (e.refined || e.isRef) return;
-    try { const r2 = await refineVia(o, d, e, state.result.v, state.result.depart); e.via = r2.via; e.refined = true; } catch { /* keep the stops */ }
+    try {
+      const fixed = e.charge?.ok ? e.charge.stops.map((x) => x.p) : [];       // e-208 charging stops
+      const r2 = await refineVia(o, d, e, state.result.v, state.result.depart, 9, fixed);
+      e.via = r2.via;
+      if (!r2.ok && e.split) { e.legs = await refineLegs(o, d, e, state.result.v, state.result.depart, fixed); e.twoLinks = !!e.legs; }
+      e.refined = true;
+    } catch { /* keep the stops */ }
   };
-  for (const gm of div.querySelectorAll('.gm')) {
-    gm.onclick = async (ev) => {
-      if (e.refined || e.isRef) return;          // already checked: normal link
-      ev.preventDefault();
-      const txt = gm.textContent; gm.textContent = 'Préparation de l\'itinéraire…';
-      await prepare();
-      const ls = gmLinks(o, d, e);
-      div.querySelectorAll('.gm').forEach((a, i) => { if (ls[i]) a.href = ls[i].href; });
-      gm.textContent = txt;
-      location.href = gm.href;
-    };
-  }
-  div.querySelector('.fav').onclick = async () => { await prepare(); saveTrip(e); };
+  showLinks();
+  div.querySelector('.fav').onclick = async () => { await prepare(); showLinks(); saveTrip(e); };
   if (compact) div.querySelector('.label').style.fontWeight = '600';
   return div;
 }
@@ -434,10 +444,9 @@ function render() {
   renderBudget();
   renderChart();
   renderList();
-  const { mode, notice } = state.result;
-  $('footStats').textContent = `${notice ? notice + ' · ' : ''}Méthode ${mode === 'valhalla' ? 'économe' : 'complète'} · ` +
+  $('footStats').textContent =
     `${count} itinéraires évalués, ${eff.length} retenus · ${stats.api} requêtes TomTom` +
-    `${stats.cached ? ` (+${stats.cached} déjà en mémoire)` : ''}${stats.valhalla ? ` · ${stats.valhalla} estimations gratuites` : ''} · ${secs} s`;
+    `${stats.cached ? ` (+${stats.cached} déjà en mémoire)` : ''} · ${secs} s`;
   $('results').classList.remove('hidden');
   $('results').scrollIntoView({ behavior: 'smooth' });
 }

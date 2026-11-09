@@ -2,12 +2,11 @@
 import { km } from './geo.js';
 import { nearestLocal } from './tolls.js';
 
-export const stats = { api: 0, cached: 0, valhalla: 0 };
+export const stats = { api: 0, cached: 0 };
 const cache = new Map();
 
 // ---- persistent cache (IndexedDB) so that repeating a trip costs no new requests ----
 const TTL_TOMTOM = 3 * 3600e3;          // traffic changes: keep 3 h
-const TTL_VALHALLA = 7 * 24 * 3600e3;   // no traffic: keep 7 days
 let dbp = null;
 function db() {
   if (dbp) return dbp;
@@ -90,52 +89,6 @@ export async function route(o, d, { avoidTolls = false, maxSpeed = null, depart 
     return routes;
   }
   throw new Error('TomTom: trop de requêtes, réessayer dans une minute');
-}
-
-// ---- Valhalla (OpenStreetMap, free, no key): toll-free time estimates ----
-const VALHALLA = 'https://valhalla1.openstreetmap.de';
-let vSlot = 0;
-async function valhalla(path, body) {
-  const ck = 'vh' + path + JSON.stringify(body);
-  if (cache.has(ck)) return cache.get(ck);
-  const stored = await pget(ck, TTL_VALHALLA);
-  if (stored) { cache.set(ck, stored); return stored; }
-  for (let attempt = 0; attempt < 4; attempt++) {
-    const now = Date.now(), slot = Math.max(now, vSlot);
-    vSlot = slot + 500;                       // fair use of the public server: ~2 requests / second
-    if (slot > now) await sleep(slot - now);
-    stats.valhalla++;
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 30000);
-      const r = await fetch(VALHALLA + path, { method: 'POST', body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' }, signal: ctl.signal });
-      clearTimeout(timer);
-      if (r.status === 429 || r.status >= 500) { await sleep(1500 * (attempt + 1)); continue; }
-      const j = r.ok ? await r.json() : null;
-      cache.set(ck, j); if (j) pset(ck, j);
-      return j;
-    } catch { await sleep(1500 * (attempt + 1)); }
-  }
-  return null;
-}
-const vOpts = (maxSpeed) => ({ auto: { exclude_tolls: true, ...(maxSpeed ? { top_speed: maxSpeed } : {}) } });
-const vLoc = (p) => ({ lat: +p[0].toFixed(5), lon: +p[1].toFixed(5) });
-
-// toll-free time/distance between two points: {sec, km} or null
-export async function freeEstimate(a, b, maxSpeed) {
-  const j = await valhalla('/route', { locations: [vLoc(a), vLoc(b)], costing: 'auto', costing_options: vOpts(maxSpeed),
-    directions_type: 'none', units: 'kilometers' });
-  if (!j || !j.trip) return null;
-  return { sec: j.trip.summary.time, km: j.trip.summary.length };
-}
-
-// toll-free matrix (all pairs must be < 150 km apart): returns m[i][j] = {sec, km} | null
-export async function freeMatrix(sources, targets, maxSpeed) {
-  const j = await valhalla('/sources_to_targets', { sources: sources.map(vLoc), targets: targets.map(vLoc), costing: 'auto',
-    costing_options: vOpts(maxSpeed), units: 'kilometers' });
-  if (!j || !j.sources_to_targets) return null;
-  return j.sources_to_targets.map((row) => row.map((c) => (c && c.time != null ? { sec: c.time, km: c.distance } : null)));
 }
 
 // Points on ordinary roads near motorway points (so that toll-free legs really start off the motorway)

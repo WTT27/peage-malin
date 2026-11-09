@@ -78,7 +78,7 @@ function evalRoute(r, label) {
 async function audit(name) {
   const d = TRIPS[name], o = HOME, P = (p) => `${p[0]},${p[1]}`;
   const a0 = stats.api;
-  const app = await analyse(o, d, v, depart, () => {}, { estimator: 'tomtom' });
+  const app = await analyse(o, d, v, depart, () => {});
   const appReq = stats.api - a0;
   const F = app.eff;
   const ref = F.find((e) => e.isRef);

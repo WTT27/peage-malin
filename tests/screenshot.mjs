@@ -34,6 +34,8 @@ while (Date.now() - t0 < +tmo * 1000) {
   await sleep(1000);
 }
 await sleep(1500);
+// optional: PM_POST = JS run once the results are shown (e.g. tap a button), then PM_POSTWAIT seconds of waiting
+if (found && process.env.PM_POST) { await send('Runtime.evaluate', { expression: process.env.PM_POST }); await sleep(1000 * +(process.env.PM_POSTWAIT || 20)); }
 const m = await send('Runtime.evaluate', { expression: 'document.documentElement.scrollHeight', returnByValue: true });
 const h = Math.min(6000, m.result.value);
 await send('Emulation.setDeviceMetricsOverride', { width: +width, height: h, deviceScaleFactor: 1, mobile: true });

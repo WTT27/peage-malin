@@ -24,10 +24,9 @@ const D = { lille: [50.6292, 3.0573], nantes: [47.2184, -1.5536], lyon: [45.7578
 const o = [49.00297, 1.3155];
 const t0 = Date.now();
 const vv = { ...DEFAULT_VEHICLES[veh], ...JSON.parse(process.env.VEH || '{}') };
-const r = await analyse(o, D[dest], vv, new Date(when), () => {}, { estimator: process.env.MODE || 'tomtom' });
-if (r.notice) console.log('NOTICE:', r.notice);
+const r = await analyse(o, D[dest], vv, new Date(when), () => {});
 const hm = (m) => `${Math.floor(Math.round(m) / 60)} h ${String(Math.round(m) % 60).padStart(2, '0')}`;
-console.log(`${dest} ${veh} [${r.mode}]: ${r.count} évalués, ${r.eff.length} efficaces, TomTom ${stats.api} requêtes (+${stats.cached} cache), Valhalla ${stats.valhalla}, confirmés ${r.confirmed}, facteur ${r.factor?.toFixed(2)}, ${Math.round((Date.now() - t0) / 1000)} s`);
+console.log(`${dest} ${veh}: ${r.count} évalués, ${r.eff.length} efficaces, TomTom ${stats.api} requêtes (+${stats.cached} cache), confirmés ${r.confirmed}, ${Math.round((Date.now() - t0) / 1000)} s`);
 for (const e of r.eff) {
   console.log(`  ${e.best ? '⭐' : e.freeWin ? '🟢' : '  '} +${String(Math.round(e.dMin)).padStart(3)}'  -${e.save.toFixed(2).padStart(6)} €  ${hm(e.min)}  ${e.cost.toFixed(2)} €  ${e.label.slice(0, 100)}`);
   if (e.charge) {

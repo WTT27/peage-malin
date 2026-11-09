@@ -8,7 +8,7 @@
 import { HOME, TRIPS, WHEN, net, hm } from './lib.mjs';
 
 const { loadTolls, priceRoute } = await import('../app/js/tolls.js');
-const { analyse, DEFAULT_VEHICLES, refineVia, isoLocal, splitTrip } = await import('../app/js/optimizer.js');
+const { analyse, DEFAULT_VEHICLES, refineVia, isoLocal, refineLegs } = await import('../app/js/optimizer.js');
 const { mergeStops } = await import('../app/js/charging.js');
 const { route } = await import('../app/js/services.js');
 const { routePoints, km } = await import('../app/js/geo.js');
@@ -18,22 +18,25 @@ const args = process.argv.slice(2);
 const veh = ['diesel', 'ev'].includes(args[0]) ? args.shift() : 'diesel';
 const names = args.length ? args : Object.keys(TRIPS);
 const v = DEFAULT_VEHICLES[veh], depart = new Date(WHEN);
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, nTwo = 0;
+const nStops = [];
 const failures = [];
 
 for (const name of names) {
   const d = TRIPS[name];
-  const res = await analyse(HOME, d, v, depart, () => {}, { estimator: 'tomtom' });
+  const res = await analyse(HOME, d, v, depart, () => {});
   const lines = [];
   for (const e of res.eff) {
     if (e.isRef) continue;
-    const r2 = await refineVia(HOME, d, e, v, depart, +(process.env.MAXSTOPS || 9));
-    let via = r2.via;
-    if (e.charge?.ok && e.charge.stops.length) via = mergeStops(e.line || [], via, e.charge.stops.map((s) => s.p));
+    const fixed = e.charge?.ok ? e.charge.stops.map((s) => s.p) : [];          // charging stops, as in the app
+    const r2 = await refineVia(HOME, d, e, v, depart, +(process.env.MAXSTOPS || 9), fixed);
+    const via = mergeStops(e.line || [], r2.via, fixed);
     // toll-free option: the app tells the user to switch on "Éviter les péages" in Google Maps → same here
     const free = e.toll < 0.05;
     // two-link options: each part checked on its own (the free part with "avoid tolls", as the app tells the user)
-    const legs = (!free && splitTrip(HOME, d, e, via)) || [{ from: HOME, to: d, via, avoidTolls: free }];
+    // (as in the app: two links only when one link fails the check)
+    const legs = (!free && !r2.ok && await refineLegs(HOME, d, { ...e, via: r2.via }, v, depart, fixed)) || [{ from: HOME, to: d, via, avoidTolls: free }];
+    nStops.push(via.length); if (legs.length > 1) nTwo++;
     const rs = [];
     for (const L of legs) {
       const x = await route(L.from, L.to, { via: L.via, depart: isoLocal(depart), maxSpeed: v.maxSpeed, avoidTolls: L.avoidTolls });
@@ -75,6 +78,6 @@ for (const name of names) {
   console.log(`== ${name} (${veh}): ${res.eff.filter((e) => !e.isRef).length} options`);
   for (const l of lines) console.log(l);
 }
-console.log(`\nGoogle follow (${veh}): ${pass} options OK, ${fail} not followed. TomTom: ${net.tomtomNew} new requests, ${net.tomtomDisk} from disk cache.`);
+console.log(`\nGoogle follow (${veh}): ${pass} options OK, ${fail} not followed. Two links: ${nTwo}. Stops per option: average ${(nStops.reduce((a, b) => a + b, 0) / (nStops.length || 1)).toFixed(1)}, ${nStops.filter((n) => n <= 3).length} with 3 or fewer. TomTom: ${net.tomtomNew} new requests, ${net.tomtomDisk} from disk cache.`);
 if (failures.length) { console.log('Failures:'); for (const f of failures) console.log('  ' + f); }
 process.exit(fail ? 1 : 0);
