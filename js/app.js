@@ -24,7 +24,11 @@ const saveSettings = () => { try { localStorage.setItem('vehicles', JSON.stringi
 
 // key passed once in the URL fragment: …/#key=XXXX  (never sent to any server)
 const m = location.hash.match(/key=([A-Za-z0-9]+)/);
-if (m) { setKey(m[1]); history.replaceState(null, '', location.pathname + location.search); }
+if (m) setKey(m[1]);
+// channel of Thomas's e-208 (posted by the program on his home computer): …/#car=pm-xxxx
+const mc = location.hash.match(/car=(pm-[a-f0-9]+)/);
+if (mc) { try { localStorage.setItem('carTopic', mc[1]); } catch { /* ignore */ } }
+if (m || mc) history.replaceState(null, '', location.pathname + location.search);
 
 $('btnSettings').onclick = () => {
   $('sKey').value = getKey();
@@ -33,6 +37,7 @@ $('btnSettings').onclick = () => {
   $('sReserve').value = V.ev.reservePct; $('sKwhO').value = V.ev.kwhOther; $('sBatt').value = V.ev.batteryKwh;
   $('sHome').value = V.ev.homeEurKwh; $('sFast').value = V.ev.fastEurKwh;
   $('sMode').value = engineMode();
+  $('sCar').value = carTopic();
   renderPlaceList();
   const dv = tollData(); $('dataVersion').textContent = dv ? dv.note : '';
   $('settings').showModal();
@@ -46,7 +51,8 @@ $('settings').addEventListener('close', () => {
   V.ev.kwhMotorway = num('sKwhM', V.ev.kwhMotorway); V.ev.kwhOther = num('sKwhO', V.ev.kwhOther);
   V.ev.kwhMotorwayWinter = num('sKwhMW', V.ev.kwhMotorwayWinter); V.ev.lunchMin = num('sLunch', V.ev.lunchMin);
   V.ev.reservePct = num('sReserve', V.ev.reservePct);
-  try { localStorage.setItem('engineMode', $('sMode').value); } catch { /* ignore */ }
+  try { localStorage.setItem('engineMode', $('sMode').value); localStorage.setItem('carTopic', $('sCar').value.trim()); } catch { /* ignore */ }
+  fetchCar();
   V.ev.batteryKwh = num('sBatt', V.ev.batteryKwh); V.ev.homeEurKwh = num('sHome', V.ev.homeEurKwh); V.ev.fastEurKwh = num('sFast', V.ev.fastEurKwh);
   saveSettings();
 });
@@ -65,6 +71,50 @@ function readEvBox() {
   saveSettings();
 }
 fillEvBox();
+
+// ---------- my e-208, read from the car (MyPeugeot → home computer → ntfy channel) ----------
+const carTopic = () => { try { return localStorage.getItem('carTopic') || ''; } catch { return ''; } };
+let car = (() => { try { return JSON.parse(localStorage.getItem('carLast') || 'null'); } catch { return null; } })(), startTouched = false;
+$('evStart').addEventListener('input', () => { startTouched = true; });
+const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `il y a ${m} min` : m < 48 * 60 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`; };
+const dec = (x) => String(x).replace('.', ',');
+// measured consumption usable for the route planning (enough km in that group)
+function measured(c) {
+  const st = c?.stats || {}, ok = (g) => (g && g.km >= 150 ? g.kwh100 : null);
+  return { mwSummer: ok(st.ete_autoroute), mwWinter: ok(st.hiver_autoroute), otherSummer: ok(st.ete_autres), otherWinter: ok(st.hiver_autres) };
+}
+function renderCar() {
+  const box = $('carLive');
+  if (!car || !carTopic()) { box.classList.add('hidden'); return; }
+  const carT = Date.parse(car.carAt) || car.at, fresh = Date.now() - carT < 12 * 3600e3;
+  const ms = measured(car);
+  const msTxt = [ms.mwWinter && `autoroute hiver ${dec(ms.mwWinter)}`, ms.mwSummer && `autoroute été ${dec(ms.mwSummer)}`,
+    ms.otherWinter && `autres hiver ${dec(ms.otherWinter)}`, ms.otherSummer && `autres été ${dec(ms.otherSummer)}`].filter(Boolean).join(' · ');
+  box.innerHTML = `
+    <p class="big">🔋 <b>${car.level ?? '?'} %</b>${car.kwh != null ? ` (${dec(car.kwh.toFixed(1))} kWh)` : ''}${car.charging && /progress/i.test(car.charging) ? ' · ⚡ en charge' : ''}
+      · reste <b>≈ ${car.remainingKm ?? '?'} km</b> <span class="old">(à ${dec(car.rateUsed)} kWh/100 km, jusqu'à 8 %)</span></p>
+    ${car.live ? `<p>Conso réelle sur les ${car.live.km} derniers km : <b>${dec(car.live.kwh100)} kWh/100 km</b></p>` : ''}
+    ${car.carRange != null ? `<p class="old">La voiture annonce ${car.carRange} km</p>` : ''}
+    ${msTxt ? `<p>Conso mesurée sur vos trajets (kWh/100 km) : ${msTxt}</p>
+      <label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}
+    <p class="old">Lu sur la voiture ${ago(carT)}${fresh ? '' : ' — ancien, la voiture n\'a rien envoyé depuis'}</p>`;
+  box.classList.remove('hidden');
+  const cb = $('evMeasured');
+  if (cb) cb.onchange = () => { V.ev.useMeasured = cb.checked; saveSettings(); };
+  if (fresh && car.level != null && !startTouched) $('evStart').value = car.level;     // battery at departure = real level
+}
+async function fetchCar() {
+  const t = carTopic();
+  if (!t) { renderCar(); return; }
+  try {
+    const txt = await (await fetch(`https://ntfy.sh/${t}/json?poll=1&since=48h`)).text();
+    const msgs = txt.trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((x) => x.event === 'message');
+    if (msgs.length) { const c = JSON.parse(msgs[msgs.length - 1].message); if (!car || c.at >= car.at) { car = c; try { localStorage.setItem('carLast', JSON.stringify(car)); } catch { /* ignore */ } } }
+  } catch { /* offline: keep the last values */ }
+  renderCar();
+}
+fetchCar();
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.veh === 'ev') fetchCar(); });
 $('evNoCharge').onchange = () => { $('evLunch').disabled = $('evNoCharge').checked; };
 
 // ---------- private storage on this phone (localStorage) ----------
@@ -193,6 +243,7 @@ document.querySelectorAll('#vehSeg button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('#vehSeg button').forEach((x) => x.classList.toggle('on', x === b));
   state.veh = b.dataset.v;
   $('evBox').classList.toggle('hidden', state.veh !== 'ev');
+  if (state.veh === 'ev') fetchCar();
 });
 
 try {
@@ -256,6 +307,14 @@ $('form').addEventListener('submit', async (ev) => {
     if (!tollData()) await loadTolls();
     if (state.veh === 'ev') readEvBox();
     const v = { ...V[state.veh] };
+    if (v.type === 'ev' && v.useMeasured !== false && car) {
+      const ms = measured(car), winter = (($('when').value ? new Date($('when').value) : new Date()).getMonth() + 1);
+      const isW = winter >= 11 || winter <= 3;
+      if (ms.mwSummer) v.kwhMotorway = ms.mwSummer;
+      if (ms.mwWinter) v.kwhMotorwayWinter = ms.mwWinter;
+      const other = isW ? ms.otherWinter : ms.otherSummer;
+      if (other) v.kwhOther = other;
+    }
     if (v.type === 'diesel' && !V.diesel.priceSetByUser) {
       const p = await dieselPrice();
       if (p) { v.eurPerL = p; V.diesel.eurPerL = p; saveSettings(); }
