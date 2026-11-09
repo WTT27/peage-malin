@@ -252,3 +252,21 @@ unofficial ones need his account credentials on a server, which a phone-only sta
 - The search itself still uses a quick estimate (same curve, no locations); real stops are planned on the final routes.
 - Each option shows its stops (network, place, time, % before/after, kWh, €, minutes, lunch) and the arrival %;
   the charging stops are added to the Google Maps waypoints. No reachable charger → warning + 20 min penalty.
+
+## D-034 — Real battery level and consumption read from the car (MyPeugeot) (2026-11-09)
+Thomas: the e-208 shows no battery %, only an inaccurate range; he measures consumption by reading the % in the
+MyPeugeot app, driving 10 km and reading again. He wants it automatic and offered his credentials.
+- Unofficial access, same as the MyPeugeot app (no public Stellantis API for owners). Login on Peugeot's own page by a
+  hidden Chromium on Thomas's always-on Linux computer (`car/peugeot.mjs`); app client id/secret downloaded from the
+  community project homeassistant-stellantis-vehicles (updated there when Stellantis changes them). Password, tokens,
+  history and channel name live only in `~/.config/peage-malin-car/` (mode 600), never in the public repo; the password
+  is typed by Thomas in his own terminal (`node car/setup.mjs`), never in the chat.
+- `car/poll.mjs` (cron, every 2 min; API call every 2 min while the car changes, every 10 min when idle): battery %,
+  residual energy (Wh, more precise than the %), odometer; Peugeot trip history hourly (distance, duration, average
+  speed, energy). Live consumption over the last ~30 km; long-term consumption by season (Nov–Mar) and road type
+  (trip average ≥ 75 km/h = motorway); remaining km down to 8 %. No position is stored or sent.
+- Transport to the phone: secret ntfy.sh channel (free, no account, HTTPS, messages kept 12 h); Péage Malin reads it
+  (no port opened on the home computer). Link once: `…/#car=pm-…`. Panel "🔋" in the e-208 options; battery at departure
+  pre-filled with the real level; measured consumptions (≥ 150 km per group) used for the planning (can be switched off).
+- To verify on real data: trip energy values (some cars need a ×1.343 correction per the community project) against
+  battery-level drops.

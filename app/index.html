@@ -51,6 +51,7 @@
       </div>
     </div>
     <div id="evBox" class="evbox hidden">
+      <div id="carLive" class="carlive hidden"></div>
       <label class="field inline"><span>🔋 Batterie au départ (%)</span><input id="evStart" type="number" min="5" max="100" step="5" inputmode="numeric"></label>
       <label class="field inline"><span>Batterie voulue à l'arrivée (%) <small>facultatif</small></span><input id="evArrive" type="number" min="0" max="90" step="5" inputmode="numeric" placeholder="8"></label>
       <label class="tick"><input id="evLunch" type="checkbox"> 🍽️ Déjeuner pendant une recharge</label>
@@ -101,6 +102,7 @@
   <form method="dialog" class="settings">
     <h2>Réglages</h2>
     <label class="field"><span>Clé TomTom (gratuite)</span><input id="sKey" type="text" spellcheck="false"></label>
+    <label class="field"><span>Canal de ma voiture (e-208)</span><input id="sCar" type="text" spellcheck="false" placeholder="pm-…"></label>
     <label class="field"><span>Méthode de calcul</span>
       <select id="sMode">
         <option value="tomtom">Complète — tout vérifié avec TomTom (≈ 25 à 60 requêtes)</option>

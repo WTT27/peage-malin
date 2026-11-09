@@ -99,3 +99,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 .charge p { margin: 2px 0; }
 .charge .warn { color: var(--bad); }
 .evbox .field.inline input { width: 80px; flex: none; }
+.carlive { font-size: .88rem; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.carlive p { margin: 2px 0; }
+.carlive .big { font-size: 1.05rem; }
+.carlive .old { color: var(--muted); }
