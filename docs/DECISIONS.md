@@ -270,3 +270,12 @@ MyPeugeot app, driving 10 km and reading again. He wants it automatic and offere
   pre-filled with the real level; measured consumptions (≥ 150 km per group) used for the planning (can be switched off).
 - To verify on real data: trip energy values (some cars need a ×1.343 correction per the community project) against
   battery-level drops.
+
+### D-034 follow-up — first real data (2026-11-09)
+- The car's "residual Wh" does not match its % (26.7 of 33.2 kWh at 93 %): only the % is used (× 46 kWh).
+- Trip `avgSpeed` is not in m/s: the average speed is computed as distance / duration.
+- Peugeot's trip energy reads low (12.2 kWh/100 km raw). It is calibrated against real battery drops in the history
+  (stretches without charging, ≥ 100 km); until then it is scaled to Thomas's own 15 kWh/100 km (factor 1.23).
+- Measured motorway figures replace the settings (18/20) only once the calibration comes from real measurement.
+- Settings: diesel price shown with 2 decimals (the automatic price had 3 and blocked the form); price fields accept
+  any decimals; saving the settings no longer freezes the automatic diesel price unless the price was changed.

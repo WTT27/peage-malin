@@ -37,6 +37,7 @@ if (SHOW || !idle || now - state.lastCall > 10 * 60e3) {
 if (SHOW || now - state.lastTrips > 3600e3) {
   try {
     const trips = readJson('trips.json', []);
+    for (const t of trips) if (t.sec > 0) t.avgKmh = t.km / t.sec * 3600;     // (first version stored a wrong unit)
     const known = new Set(trips.map((t) => t.id));
     const since = trips.length ? new Date(Math.max(...trips.map((t) => Date.parse(t.start))) - 86400e3) : new Date(now - 400 * 86400e3);
     let url = `/vehicles/${conf.vehicleId}/trips?distance=0.1-&timestamps=${since.toISOString().slice(0, 19)}Z/`;
@@ -46,7 +47,7 @@ if (SHOW || now - state.lastTrips > 3600e3) {
         if (known.has(t.id)) continue;
         const ec = (t.energyConsumptions || []).find((e) => e.type === 'Electric') || {};
         trips.push({ id: t.id, start: t.startedAt || t.createdAt, km: +t.distance || 0, sec: +t.duration || 0,
-          avgKmh: t.kinetic?.avgSpeed ? +t.kinetic.avgSpeed * 3.6 : null, wh: ec.consumption != null ? +ec.consumption : null,
+          avgKmh: +t.duration > 0 ? +t.distance / +t.duration * 3600 : null, wh: ec.consumption != null ? +ec.consumption : null,
           startKm: t.startMileage ?? null });
         known.add(t.id);
       }
@@ -60,7 +61,8 @@ if (SHOW || now - state.lastTrips > 3600e3) {
 }
 
 // ---- 3. computations ----
-const kwhOf = (p) => (p.residualWh ? p.residualWh / 1000 : p.level != null ? p.level / 100 * BATTERY_KWH : null);
+// the e-208's own "residual Wh" does not match its % (26.7 of 33.2 kWh shown at 93 %), so only the % is used
+const kwhOf = (p) => (p.level != null ? p.level / 100 * BATTERY_KWH : null);
 const history = (() => {
   try { return readFileSync(join(DIR, 'history.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; }
 })();
@@ -81,13 +83,33 @@ if (cur && cur.km != null) {
 }
 // long-term figures from the trip history: winter (Nov–Mar) / summer, motorway (average ≥ 75 km/h) / other roads
 const trips = readJson('trips.json', []);
+// Peugeot's trip energy reads low on the e-208: calibrate it against the real battery drops seen in the history
+// (stretches without charging). Until 100 km have been measured, use Thomas's own figure: 15 kWh/100 km over his
+// last 8,000 km of mixed driving.
+let calib = null;
+{
+  const pts = history.filter((p) => p.km != null && p.level != null);
+  let mKm = 0, mKwh = 0, rKwh = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (b.level > a.level || b.at - a.at > 6 * 3600e3 || b.km - a.km < 0.5) continue;
+    const ts = trips.filter((t) => t.wh && t.startKm != null && t.startKm >= a.km - 0.5 && t.startKm + t.km <= b.km + 0.5);
+    const tkm = ts.reduce((x, t) => x + t.km, 0);
+    if (tkm < 0.8 * (b.km - a.km)) continue;                        // trips not yet synced for this stretch
+    mKm += b.km - a.km; mKwh += (a.level - b.level) / 100 * BATTERY_KWH; rKwh += ts.reduce((x, t) => x + t.wh / 1000, 0);
+  }
+  if (mKm >= 100 && rKwh > 0) calib = { factor: +(mKwh / rKwh).toFixed(3), km: Math.round(mKm), source: 'mesure' };
+}
+const recent = trips.filter((t) => t.wh && t.km >= 1).slice(-400);
+const rawAvg = recent.reduce((x, t) => x + t.wh, 0) / 1000 / (recent.reduce((x, t) => x + t.km, 0) || 1) * 100;
+if (!calib) calib = { factor: rawAvg > 0 ? +(15 / rawAvg).toFixed(3) : 1, km: 0, source: '15 kWh/100 km' };
 const groups = {};
 for (const t of trips) {
   if (!t.wh || t.km < 5) continue;
   const m = new Date(t.start).getMonth() + 1, season = m >= 11 || m <= 3 ? 'hiver' : 'ete';
   const kind = (t.avgKmh ?? 0) >= 75 ? 'autoroute' : 'autres';
   const g = groups[`${season}_${kind}`] ||= { km: 0, kwh: 0, n: 0 };
-  g.km += t.km; g.kwh += t.wh / 1000; g.n++;
+  g.km += t.km; g.kwh += t.wh / 1000 * calib.factor; g.n++;
 }
 const stats = Object.fromEntries(Object.entries(groups).map(([k, g]) => [k, { kwh100: +(g.kwh / g.km * 100).toFixed(1), km: Math.round(g.km), n: g.n }]));
 const all = Object.values(groups).reduce((s, g) => ({ km: s.km + g.km, kwh: s.kwh + g.kwh }), { km: 0, kwh: 0 });
@@ -100,8 +122,8 @@ if (cur) {
 }
 const summary = cur && {
   v: 1, at: now, carAt: cur.carAt, level: cur.level, kwh: kwhOf(cur) != null ? +kwhOf(cur).toFixed(2) : null,
-  exactKwh: !!cur.residualWh, odometer: cur.km, carRange: cur.autonomy, charging: cur.charging, plugged: cur.plugged,
-  live, remainingKm, rateUsed: live?.kwh100 || avg || 16, avg, stats, trips: trips.length,
+  exactKwh: false, odometer: cur.km, carRange: cur.autonomy, charging: cur.charging, plugged: cur.plugged,
+  live, remainingKm, rateUsed: live?.kwh100 || avg || 16, avg, stats, trips: trips.length, calib,
 };
 
 if (SHOW) { console.log(JSON.stringify(summary, null, 1)); writeJson('state.json', state); process.exit(0); }
