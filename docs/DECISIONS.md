@@ -279,3 +279,18 @@ MyPeugeot app, driving 10 km and reading again. He wants it automatic and offere
 - Measured motorway figures replace the settings (18/20) only once the calibration comes from real measurement.
 - Settings: diesel price shown with 2 decimals (the automatic price had 3 and blocked the form); price fields accept
   any decimals; saving the settings no longer freezes the automatic diesel price unless the price was changed.
+
+## D-035 — Google Maps follow check made permanent; two-link trips for long free stretches (2026-11-09)
+- `tests/google_follow.mjs`: for every option shown, the Google stops are built as the app does on "Ouvrir dans Google
+  Maps" (refineVia + charging stops), then TomTom's fastest route through them (tolls allowed = stand-in for Google) must
+  pay no more than the option's tolls + 0.50 € and stay ≥ 90 % on its roads. Toll-free options are tested with "avoid
+  tolls", as the app tells the user to switch it on. First run: 89/116 options followed.
+- Cause of most misses: 9 stops (Google's limit) cannot hold Google on 200–300 km of free roads; and extra stops were
+  spread evenly, missing the short stretch where the option leaves the motorway (Bordeaux: stayed on the A10 from
+  Poitiers Nord to Poitiers Sud). Two stops per leak; 18 stops in one link were tried and barely helped.
+- Fixes: refineVia puts a stop in the middle of each place where the option leaves the leaking toll road (plus the
+  spread ones), tries 4 rounds and keeps the best set. Options "motorway to X, then free roads" (and the reverse) open
+  as two Google Maps links split at X; the free part is driven with "Éviter les péages"; the 2nd link has no origin so
+  Google starts from the phone's position. Result: 111/116 followed; the 5 left cost 2–5 € more (mostly Toulouse).
+- Audit (tests/audit.mjs, 15 trips): 10/15 without gap, app best compromise kept on 13/15. Known gaps: Nantes
+  (+6 min −2.27 €), Clermont borderline (+4 min −9.79 € vs app +6 min −13.08 €), slow toll-free variants (+74…199 min).

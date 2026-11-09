@@ -1,5 +1,5 @@
 import { loadTolls, tollData } from './tolls.js';
-import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName, refineVia } from './optimizer.js';
+import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName, refineVia, splitTrip } from './optimizer.js';
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 import { mergeStops } from './charging.js';
@@ -184,7 +184,7 @@ function saveTrip(e) {
   const name = (prompt('Nom de ce trajet :', def) || '').trim();
   if (!name) return;
   const trips = load('trips', []);
-  trips.push({ id: Date.now(), name, o: r.o, d: r.d, veh: r.vehKey, label: e.label, via: viaOf(e), savedAt: new Date().toISOString(), depart: r.departLabel,
+  trips.push({ id: Date.now(), name, o: r.o, d: r.d, veh: r.vehKey, label: e.label, via: viaOf(e), legs: e.isRef ? null : splitTrip(r.o, r.d, e, viaOf(e)), legName: e.split?.name, freeFirst: e.split?.freeFirst, savedAt: new Date().toISOString(), depart: r.departLabel,
     saved: { min: e.min, km: e.km, toll: e.toll, energy: e.energy, cost: e.cost, dMin: e.dMin, save: e.save, saveToll: e.saveToll, saveEnergy: e.saveEnergy } });
   store('trips', trips);
   renderTrips();
@@ -200,10 +200,12 @@ function renderTrips() {
     const gain = s.save > 0.05 ? `−${eur(s.save)} pour +${Math.round(s.dMin)} min (${splitText(s, t.veh)})` : 'itinéraire le plus rapide';
     div.innerHTML = `<div class="name">${escapeHtml(t.name)}</div>
       <div class="split">${escapeHtml(t.label)}</div>
+      ${t.legs ? legsHint(t.legName || '', t.freeFirst) : ''}
       <div class="split">${t.veh === 'ev' ? 'e-208' : '5008'} · ${hm(s.min)} · ${gain}${t.depart ? ` · calculé pour un départ le ${escapeHtml(t.depart)}` : ''}</div>
       <div class="actions">
         <button type="button" class="primary-act" data-a="check">Vérifier</button>
-        <a target="_blank" rel="noopener" href="${googleMapsUrl(t.o, t.d, t.via || [])}">Google Maps</a>
+        ${t.legs ? t.legs.map((L, i) => `<a target="_blank" rel="noopener" href="${googleMapsUrl(i ? null : L.from, L.to, L.via)}">${i ? '② Google Maps' : '① Google Maps'}</a>`).join('')
+          : `<a target="_blank" rel="noopener" href="${googleMapsUrl(t.o, t.d, t.via || [])}">Google Maps</a>`}
         <button type="button" data-a="rerun">Relancer l'analyse</button>
         <button type="button" data-a="del" class="del">Supprimer</button>
       </div>
@@ -348,6 +350,16 @@ $('form').addEventListener('submit', async (ev) => {
 
 // ---------- results ----------
 const viaOf = (e) => (e.charge && e.charge.ok && e.charge.stops.length ? mergeStops(e.line || [], e.via || [], e.charge.stops.map((x) => x.p)) : e.via || []);
+// Google Maps link(s) of an option: one link, or two for "motorway to X, then free roads" (and the reverse), the free
+// part to be driven with "Éviter les péages" (9 stops cannot hold Google on a long free stretch, D-035)
+function gmLinks(o, d, e) {
+  const legs = splitTrip(o, d, e, viaOf(e));
+  if (!legs) return [{ href: googleMapsUrl(o, d, viaOf(e)), text: 'Ouvrir dans Google Maps' }];
+  const nm = e.split.name;
+  return legs.map((L, i) => ({ href: googleMapsUrl(i ? null : L.from, L.to, L.via), avoid: L.avoidTolls,
+    text: i ? `② De ${nm} à l'arrivée` : `① Jusqu'à ${nm}` }));
+}
+const legsHint = (nm, freeFirst) => `<div class="split">👉 S'ouvre en 2 parties dans Google Maps. Partie ${freeFirst ? '①' : '②'} (routes gratuites) : activez « Éviter les péages » (Options). Ouvrez la partie ② en arrivant à ${escapeHtml(nm)}.</div>`;
 const hhmm = (h) => `${Math.floor(h) % 24} h ${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
 function chargeHtml(e) {
   const c = e.charge;
@@ -375,8 +387,9 @@ function routeCard(e, { compact = false } = {}) {
     ${e.kind === 'free' && e.toll < 0.05 ? '<div class="split">👉 Dans Google Maps, activez aussi « Éviter les péages » (Options) pour être sûr de rester sur cet itinéraire.</div>' : ''}
     ${chargeHtml(e)}
     <div class="meta">${hm(e.min)} · ${Math.round(e.km)} km · péages ${eur(e.toll)} · ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(e.energy)}${e.chargeMin ? ` · dont recharge ${Math.round(e.chargeMin)} min` : ''}</div>
-    <div class="actions">
-      <a class="gm" target="_blank" rel="noopener" href="${googleMapsUrl(o, d, viaOf(e))}">Ouvrir dans Google Maps</a>
+    ${e.split && !e.isRef ? legsHint(e.split.name, e.split.freeFirst) : ''}
+    <div class="actions${e.split && !e.isRef ? ' two' : ''}">
+      ${gmLinks(o, d, e).map((l, i) => `<a class="gm" data-i="${i}" target="_blank" rel="noopener" href="${l.href}">${escapeHtml(l.text)}</a>`).join('')}
       <button type="button" class="fav">☆ Enregistrer</button>
     </div>`;
   // Google Maps: stops checked (and completed if needed) just before opening
@@ -384,15 +397,18 @@ function routeCard(e, { compact = false } = {}) {
     if (e.refined || e.isRef) return;
     try { const r2 = await refineVia(o, d, e, state.result.v, state.result.depart); e.via = r2.via; e.refined = true; } catch { /* keep the stops */ }
   };
-  const gm = div.querySelector('.gm');
-  gm.onclick = async (ev) => {
-    if (e.refined || e.isRef) return;            // already checked: normal link
-    ev.preventDefault();
-    const txt = gm.textContent; gm.textContent = 'Préparation de l\'itinéraire…';
-    await prepare();
-    gm.textContent = txt; gm.href = googleMapsUrl(o, d, viaOf(e));
-    location.href = gm.href;
-  };
+  for (const gm of div.querySelectorAll('.gm')) {
+    gm.onclick = async (ev) => {
+      if (e.refined || e.isRef) return;          // already checked: normal link
+      ev.preventDefault();
+      const txt = gm.textContent; gm.textContent = 'Préparation de l\'itinéraire…';
+      await prepare();
+      const ls = gmLinks(o, d, e);
+      div.querySelectorAll('.gm').forEach((a, i) => { if (ls[i]) a.href = ls[i].href; });
+      gm.textContent = txt;
+      location.href = gm.href;
+    };
+  }
   div.querySelector('.fav').onclick = async () => { await prepare(); saveTrip(e); };
   if (compact) div.querySelector('.label').style.fontWeight = '600';
   return div;

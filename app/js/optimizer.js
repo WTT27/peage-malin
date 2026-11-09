@@ -586,7 +586,9 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
         if (isOut) pieces.push(mw(cur, X), free); else pieces.push(mw(cur, N));
         const labs = c.filter(({ x }) => x.label).map(({ x }) => x.label);
         const lab = (isOut ? [...labs, escLabel] : [escLabel, ...labs]).join(' + ');
-        out.push({ label: lab.charAt(0).toUpperCase() + lab.slice(1), pieces, kind: 'escape' });
+        // Google Maps cannot be held on a long free stretch with 9 stops: these options open as two links split at X,
+        // the free half with "Éviter les péages" (D-035)
+        out.push({ label: lab.charAt(0).toUpperCase() + lab.slice(1), pieces, kind: 'escape', split: { at: e.nd.L, name: nm, freeFirst: !isOut } });
       }
     }
     const list = [];
@@ -826,23 +828,38 @@ export async function checkTrip(fav, v) {
 // Before opening Google Maps: check the stops with TomTom ("would a router that likes motorways, going through these
 // stops, pay tolls this option avoids?"). If yes, add a stop on the option's own road next to each such toll stretch and
 // check again (up to 3 rounds). 1-3 TomTom requests. Returns {via, ok}.
-export async function refineVia(o, d, e, v, depart = new Date()) {
+export async function refineVia(o, d, e, v, depart = new Date(), maxStops = 9) {
   if (!e.line || !e.line.length) return { via: e.via || [], ok: true };
   const nearestJ = (p) => { let bj = 0, bd = Infinity; e.line.forEach((q, j) => { const dd = km(q, p); if (dd < bd) { bd = dd; bj = j; } }); return [bj, bd]; };
   let js = [...new Set((e.via || []).map((p) => nearestJ(p)[0]))].sort((a, b) => a - b);
-  for (let round = 0; round < 3; round++) {
+  let best = null;                                  // stops giving the fewest extra tolls so far
+  for (let round = 0; round < 4; round++) {
     const via = js.map((j) => e.line[j]);
     const rs = await route(o, d, { via, depart: isoLocal(depart), maxSpeed: v.maxSpeed });
-    if (!rs.length) return { via, ok: false };
+    if (!rs.length) break;
     const r = rs[0], pr = priceRoute(r, depart);
     if (!pr.unpriced && pr.toll <= e.toll + 0.5) return { via, ok: true };
+    const extra = pr.unpriced ? 1e6 : pr.toll - e.toll;
+    if (!best || extra < best.extra) best = { via, extra };
     const rp = routePoints(r), adds = [];
     for (const sct of r.sections || []) {
       if (sct.sectionType !== 'TOLL_ROAD') continue;
-      // toll stretch of the test route that is not on the option: find where the option is level with its start and its
-      // end, and put stops on the option in between (1 per ~40 km), where the option is not on that toll road
+      // toll stretch of the test route that the option does not take (all of it): find where the option is level with its
+      // start and its end; in between, put a stop in the middle of each place where the option leaves that toll road
+      // (the longest two), so Google is made to leave it exactly where the option does
       const [j0] = nearestJ(rp[sct.startPointIndex]), [j1] = nearestJ(rp[sct.endPointIndex]);
-      const lo = Math.min(j0, j1), hi = Math.max(j0, j1), n = Math.max(1, Math.round((hi - lo) / 40));
+      const lo = Math.min(j0, j1), hi = Math.max(j0, j1);
+      const runs = [];
+      let run = null;
+      for (let j = lo; j <= hi; j++) {
+        let dmin = Infinity;
+        for (let i = sct.startPointIndex; i <= sct.endPointIndex; i++) { const dd = km(rp[i], e.line[j]); if (dd < dmin) dmin = dd; if (dmin <= 0.15) break; }
+        if (dmin > 0.15) { if (!run) runs.push(run = { a: j, b: j }); else run.b = j; } else run = null;
+      }
+      runs.sort((x, y) => (y.b - y.a) - (x.b - x.a));
+      for (const ru of runs.slice(0, 2)) adds.push(Math.round((ru.a + ru.b) / 2));
+      // plus stops spread along it (1 per ~40 points) where the option is clearly away from that toll road
+      const n = Math.max(1, Math.round((hi - lo) / 40));
       for (let k = 1; k <= n; k++) {
         const j = Math.round(lo + (hi - lo) * k / (n + 1));
         let dmin = Infinity;
@@ -850,18 +867,19 @@ export async function refineVia(o, d, e, v, depart = new Date()) {
         if (dmin > 0.5) adds.push(j);
       }
     }
-    if (!adds.length) return { via, ok: false };
+    if (!adds.length) break;
     const keep = new Set(adds);
     let all = [...new Set([...js, ...adds])].sort((a, b) => a - b);
-    while (all.length > 9) {                        // drop the older stop closest to its neighbour
+    while (all.length > maxStops) {                 // drop the older stop closest to its neighbour
       let bi = -1, bg = Infinity;
       all.forEach((j, i) => { if (keep.has(j)) return; const g = Math.min(i ? j - all[i - 1] : 1e9, i < all.length - 1 ? all[i + 1] - j : 1e9); if (g < bg) { bg = g; bi = i; } });
-      if (bi < 0) { all = all.slice(0, 9); break; }
+      if (bi < 0) { all = all.slice(0, maxStops); break; }
       all.splice(bi, 1);
     }
+    if (all.join() === js.join()) break;            // nothing new to try
     js = all;
   }
-  return { via: js.map((j) => e.line[j]), ok: false };
+  return { via: best ? best.via : js.map((j) => e.line[j]), ok: false };
 }
 
 export function isoLocal(d) {
@@ -869,12 +887,24 @@ export function isoLocal(d) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
 }
 
+// Two-part trip for options "motorway to X, then free roads" (or the reverse): the stops are shared out between the
+// two parts by their place along the option. Returns [{ from, to, via, avoidTolls }] or null for a one-link option.
+export function splitTrip(o, d, e, via) {
+  if (!e.split || !e.line?.length) return null;
+  const idx = (p) => { let bj = 0, bd = Infinity; e.line.forEach((q, j) => { const dd = km(q, p); if (dd < bd) { bd = dd; bj = j; } }); return bj; };
+  const X = e.split.at, jx = idx(X);
+  const near = (p) => km(p, X) < 1;
+  const a = via.filter((p) => idx(p) < jx && !near(p)), b = via.filter((p) => idx(p) > jx && !near(p));
+  return [{ from: o, to: X, via: a, avoidTolls: e.split.freeFirst }, { from: X, to: d, via: b, avoidTolls: !e.split.freeFirst }];
+}
+
 // Google Maps directions link with waypoints that force the chosen path (max 9 waypoints)
 export function googleMapsUrl(o, d, via) {
   let w = via.filter(Boolean);
   if (w.length > 9) { const step = w.length / 9; w = Array.from({ length: 9 }, (_, i) => w[Math.floor(i * step)]); }
   const f = (p) => `${p[0].toFixed(5)},${p[1].toFixed(5)}`;
-  let url = `https://www.google.com/maps/dir/?api=1&origin=${f(o)}&destination=${f(d)}&travelmode=driving`;
+  // no origin → Google starts from the phone's position (2nd part of a two-link trip, opened on the way)
+  let url = `https://www.google.com/maps/dir/?api=1${o ? `&origin=${f(o)}` : ''}&destination=${f(d)}&travelmode=driving`;
   if (w.length) url += `&waypoints=${encodeURIComponent(w.map(f).join('|'))}`;
   return url;
 }
