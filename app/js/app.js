@@ -42,7 +42,13 @@ $('btnSettings').onclick = () => {
   const dv = tollData(); $('dataVersion').textContent = dv ? dv.note : '';
   $('settings').showModal();
 };
+// car channel: saved as soon as it is typed (even if the settings are closed with the back button);
+// accepts the code alone or the whole link, any case, stray spaces
+const carCode = () => { const raw = $('sCar').value.toLowerCase().replace(/\s+/g, ''), m2 = raw.match(/pm-[a-f0-9]+/); return m2 ? m2[0] : raw; };
+$('sCar').addEventListener('input', () => { try { localStorage.setItem('carTopic', carCode()); } catch { /* ignore */ } });
+$('sCar').addEventListener('change', () => { $('sCar').value = carCode(); fetchCar(); });
 $('settings').addEventListener('close', () => {
+  fetchCar();
   if ($('settings').returnValue !== 'ok') return;
   setKey($('sKey').value);
   const num = (id, def) => { const x = parseFloat($(id).value); return Number.isFinite(x) && x > 0 ? x : def; };
@@ -52,8 +58,7 @@ $('settings').addEventListener('close', () => {
   V.ev.kwhMotorway = num('sKwhM', V.ev.kwhMotorway); V.ev.kwhOther = num('sKwhO', V.ev.kwhOther);
   V.ev.kwhMotorwayWinter = num('sKwhMW', V.ev.kwhMotorwayWinter); V.ev.lunchMin = num('sLunch', V.ev.lunchMin);
   V.ev.reservePct = num('sReserve', V.ev.reservePct);
-  try { localStorage.setItem('engineMode', $('sMode').value); localStorage.setItem('carTopic', $('sCar').value.trim()); } catch { /* ignore */ }
-  fetchCar();
+  try { localStorage.setItem('engineMode', $('sMode').value); } catch { /* ignore */ }
   V.ev.batteryKwh = num('sBatt', V.ev.batteryKwh); V.ev.homeEurKwh = num('sHome', V.ev.homeEurKwh); V.ev.fastEurKwh = num('sFast', V.ev.fastEurKwh);
   saveSettings();
 });
