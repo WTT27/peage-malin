@@ -90,3 +90,12 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 .place { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: .92rem; }
 .place span { overflow: hidden; text-overflow: ellipsis; }
 .del { border: 1px solid var(--line); background: var(--card); color: var(--bad); border-radius: 8px; padding: 4px 10px; }
+
+.evbox { margin: -4px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.evbox .field.inline { margin-bottom: 8px; }
+.tick { display: flex; align-items: center; gap: 8px; font-size: .92rem; margin: 6px 0; }
+.tick input { width: 20px; height: 20px; }
+.charge { margin-top: 6px; padding: 8px 10px; border-radius: 10px; background: var(--bg); font-size: .85rem; }
+.charge p { margin: 2px 0; }
+.charge .warn { color: var(--bad); }
+.evbox .field.inline input { width: 80px; flex: none; }

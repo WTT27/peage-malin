@@ -12,6 +12,7 @@
 import { km, cumulative, routePoints } from './geo.js';
 import { priceRoute, priceSection, stationsNear, nearestLocal } from './tolls.js';
 import { route, localPoints, freeEstimate, freeMatrix } from './services.js';
+import { loadChargers, planCharging, quickCharge, evParams } from './charging.js';
 
 const TRANSITION_SEC = 60;   // leaving / joining the motorway
 const MAX_NODES = 12;        // interchanges kept per toll stretch
@@ -24,21 +25,30 @@ const APPROACH_KM = +(globalThis.PM_APPROACH ?? 5);       // free bypasses may a
 
 export const DEFAULT_VEHICLES = {
   diesel: { label: '5008 diesel', type: 'diesel', lPer100: 6.0, eurPerL: 2.21, maxSpeed: null },
-  ev: { label: 'e-208', type: 'ev', kwhMotorway: 18, kwhOther: 15, batteryKwh: 46, homeEurKwh: 0.14, fastEurKwh: 0.54,
-    chargeKw: 45, stopOverheadMin: 10, maxSpeed: 110 },
+  // e-208 (Thomas, D-033): 15 kWh/100 km mixed roads, 18 on the motorway at 110 in summer, 20 in winter (Nov–Mar);
+  // home = average of Tempo blue/white off-peak (Aug 2026 grid: 0.1356 / 0.1536); leaves at 90 % (aged battery)
+  ev: { label: 'e-208', type: 'ev', kwhMotorway: 18, kwhMotorwayWinter: 20, kwhOther: 15, batteryKwh: 46, homeEurKwh: 0.145,
+    fastEurKwh: 0.54, stopOverheadMin: 10, maxSpeed: 110, startPct: 90, arrivePct: null, reservePct: 8,
+    lunch: false, lunchMin: 45, noCharge: false, season: 'auto' },
 };
 
 export function energy(c, v) {
   if (v.type === 'diesel') return { energy: c.km * v.lPer100 / 100 * v.eurPerL, chargeMin: 0, kwh: 0 };
-  const kwh = c.mkm * v.kwhMotorway / 100 + (c.km - c.mkm) * v.kwhOther / 100;
-  const home = Math.min(kwh, v.batteryKwh * 0.9);
-  const extra = kwh - home;
-  // fast charging: one stop can bring up to 80 % of the battery (e.g. 10 → 90 %); the part of a stop above 70 % of the
-  // battery (above ~80 % charge) is charged at half speed. No 10-minute jump for a slightly bigger need (Thomas, D-032).
-  const stops = extra > 0 ? Math.ceil(extra / (v.batteryKwh * 0.8)) : 0;
-  const perStop = stops ? extra / stops : 0, slow = Math.max(0, perStop - v.batteryKwh * 0.7) * stops;
-  return { energy: home * v.homeEurKwh + extra * v.fastEurKwh,
-    chargeMin: (extra + slow) / v.chargeKw * 60 + stops * v.stopOverheadMin, kwh };
+  const depart = v.depart || new Date();
+  const P = evParams(v, depart, c.sec);
+  const kwh = c.mkm * P.kM / 100 + (c.km - c.mkm) * P.kO / 100;
+  return { ...quickCharge(kwh, c.sec, v, depart), kwh };
+}
+
+// real charging stops at real chargers (finals only: needs the route's line)
+function applyCharging(f, v, depart) {
+  if (v.type !== 'ev' || !f.line) return;
+  const plan = planCharging(f.line, f, v, depart, f.lineMw);
+  if (!plan) return;
+  if (plan.ok) { f.energy = plan.energy; f.chargeMin = plan.chargeMin; }
+  else f.chargeMin += 20;                         // no reachable fast charger found near this route: penalty, warned in the app
+  f.charge = plan;
+  f.cost = f.toll + f.energy; f.min = f.sec / 60 + f.chargeMin;
 }
 
 // readable station name: "CHAUFOUR N°15 à GAILLON N°17" → "Chaufour", "LILLE / DOURGES (péage de Fresnes)" → "Lille / Dourges",
@@ -86,13 +96,20 @@ function mainRoads(r, j0 = 0, j1 = Infinity) {
     .map(([rn]) => rn).sort((a, b) => first.get(a) - first.get(b));
 }
 
-// polyline thinned to about one point per km
-function sample(rp) {
-  const out = [rp[0]];
+// polyline thinned to about one point per km; with flags (true = motorway), out.mw gives the flag of each kept point
+function sample(rp, flags) {
+  const out = [rp[0]], mw = [flags ? !!flags[0] : false];
   let acc = 0;
-  for (let i = 1; i < rp.length; i++) { acc += km(rp[i - 1], rp[i]); if (acc >= 1) { out.push(rp[i]); acc = 0; } }
-  if (out[out.length - 1] !== rp[rp.length - 1]) out.push(rp[rp.length - 1]);
+  for (let i = 1; i < rp.length; i++) { acc += km(rp[i - 1], rp[i]); if (acc >= 1) { out.push(rp[i]); mw.push(flags ? !!flags[i] : false); acc = 0; } }
+  if (out[out.length - 1] !== rp[rp.length - 1]) { out.push(rp[rp.length - 1]); mw.push(flags ? !!flags[rp.length - 1] : false); }
+  out.mw = mw;
   return out;
+}
+// true for every point of a TomTom route that is on a motorway (chargers must then be on a service area)
+function mwFlags(r, rp) {
+  const f = new Array(rp.length).fill(false);
+  for (const s of r.sections || []) if (s.sectionType === 'MOTORWAY') for (let i = s.startPointIndex; i <= s.endPointIndex && i < f.length; i++) f[i] = true;
+  return f;
 }
 
 function timeline(route, pts, cum) {
@@ -140,6 +157,8 @@ async function resolveLocals(points, preset = []) {
 // Main entry. onProgress(fraction, text)
 // options.estimator: 'tomtom' (complete, default) or 'valhalla' (economical: free estimates + TomTom checks)
 export async function analyse(o, d, v, depart, onProgress = () => {}, { estimator = 'tomtom' } = {}) {
+  v = { ...v, depart };
+  if (v.type === 'ev' && !v.noCharge) await loadChargers().catch(() => null);
   const opt = { maxSpeed: v.maxSpeed, depart: isoLocal(depart) };
   onProgress(0.03, 'Itinéraire le plus rapide…');
   const [routes, freeRoutes] = await Promise.all([
@@ -147,7 +166,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     route(o, d, { ...opt, avoidTolls: true, alternatives: 3 })]);
   if (!routes.length) throw new Error('Aucun itinéraire trouvé');
   const fastest = routes[0];
-  const pts = routePoints(fastest), cum = cumulative(pts), N = pts.length - 1;
+  const pts = routePoints(fastest), cum = cumulative(pts), N = pts.length - 1, ptsMw = mwFlags(fastest, pts);
   const T = timeline(fastest, pts, cum);
   const mflag = new Uint8Array(pts.length);
   for (const s of fastest.sections || []) if (s.sectionType === 'MOTORWAY') for (let i = s.startPointIndex; i <= s.endPointIndex; i++) mflag[i] = 1;
@@ -231,7 +250,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     }
     const rp = routePoints(r[0]);
     real.set(key, { sec: r[0].summary.travelTimeInSeconds, km: r[0].summary.lengthInMeters / 1000, mkm: motorwayKmOf(r[0], rp),
-      mid: rp[Math.floor(rp.length / 2)], late: rp[Math.floor(rp.length * 0.8)], geo: sample(rp), vsec: est.get(key)?.sec, roads: mainRoads(r[0]) });
+      mid: rp[Math.floor(rp.length / 2)], late: rp[Math.floor(rp.length * 0.8)], geo: sample(rp, mwFlags(r[0], rp)), vsec: est.get(key)?.sec, roads: mainRoads(r[0]) });
   }
   let mode = estimator, notice = null;
   const vJobs = [];
@@ -404,7 +423,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       const at = (f) => rp[Math.floor(ja + (jb - ja) * f)];
       const roads = mainRoads(r, ja, jb);
       detours.push({ a, b, label: q.name, piece: { type: 'seg', a, b, sec: Td[jb] - Td[ja], km: rc[jb] - rc[ja], mkm: mk,
-        toll: Math.max(0, pr.toll - tb - ta), details: pr.details, roads, via: [at(0.05), at(0.5), at(0.8)], geo: sample(rp.slice(ja, jb + 1)) } });
+        toll: Math.max(0, pr.toll - tb - ta), details: pr.details, roads, via: [at(0.05), at(0.5), at(0.8)], geo: sample(rp.slice(ja, jb + 1), mwFlags(r, rp).slice(ja, jb + 1)) } });
       if (globalThis.PM_DEBUG) console.error('detour', q.name, 'km', cum[a].toFixed(1), '→', cum[b].toFixed(1), 'sec', Math.round(Td[jb] - Td[ja]),
         'vs', Math.round(T[b] - T[a]), 'toll', (pr.toll - tb - ta).toFixed(2), 'vs', tollBetween(a, b).toll, roads);
     }));
@@ -661,8 +680,8 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   const lineOf = (pieces) => {
     const geo = [], driven = [];
     for (const p of pieces) {
-      if (p.type === 'mw') { if (p.b > p.a) { driven.push([p.a, p.b]); for (let i = p.a; i <= p.b; i += 15) geo.push({ p: pts[i], own: false }); } }
-      else { const g = p.type === 'seg' ? p.geo : real.get(ek(p.A, p.B))?.geo; for (const q of g || []) geo.push({ p: q, own: true }); }
+      if (p.type === 'mw') { if (p.b > p.a) { driven.push([p.a, p.b]); for (let i = p.a; i <= p.b; i += 15) geo.push({ p: pts[i], own: false, mw: ptsMw[i] }); } }
+      else { const g = p.type === 'seg' ? p.geo : real.get(ek(p.A, p.B))?.geo; (g || []).forEach((q, k) => geo.push({ p: q, own: true, mw: !!g.mw?.[k] })); }
     }
     return { geo, driven };
   };
@@ -677,18 +696,20 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     return js.sort((a, b) => a - b).map((j) => geo[j].p);
   };
   const guardVia = (r) => viaFor([{ type: 'seg', geo: sample(routePoints(r)) }]);
-  const refC = { ...ref, label: 'Le plus rapide (autoroute)', kind: 'ref', via: [], isRef: true, line: sample(pts) };
+  const refC = { ...ref, label: 'Le plus rapide (autoroute)', kind: 'ref', via: [], isRef: true, line: sample(pts, ptsMw) };
+  refC.lineMw = refC.line.mw;
   const finals = [refC];
   const roadsOf = (pieces) => [...new Set(pieces.filter((p) => p.type !== 'mw').flatMap((p) => (p.type === 'seg' ? p.roads : real.get(ek(p.A, p.B))?.roads || [])))];
   for (const c of list) if (!c.estimated) {
     const rd = roadsOf(c.pieces);
     finals.push({ ...c, label: rd.length ? `${c.label} (par ${rd.join(', ')})` : c.label, via: viaFor(c.pieces, viaOf(c.pieces)),
-      line: lineOf(c.pieces).geo.map((g) => g.p) });
+      ...(() => { const g = lineOf(c.pieces).geo; return { line: g.map((x) => x.p), lineMw: g.map((x) => x.mw) }; })() });
   }
   const extra = (r, label, kind) => {
     const c = evaluateRoute(r, v, depart);
     if (!c) return;
-    finals.push({ ...c, label, kind, via: guardVia(r), line: sample(routePoints(r)) });
+    const rp = routePoints(r), ln = sample(rp, mwFlags(r, rp));
+    finals.push({ ...c, label, kind, via: guardVia(r), line: ln, lineMw: ln.mw });
   };
   routes.slice(1).forEach((r, i) => { const rd = mainRoads(r); extra(r, `Autre itinéraire${rd.length ? ` (par ${rd.join(', ')})` : ` ${i + 1}`}`, 'tomtom'); });
   freeRoutes.forEach((r, i) => {
@@ -701,6 +722,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     extra(w.r, rd.length ? `${w.label} (par ${rd.join(', ')})` : w.label, 'detour');
   }
 
+  for (const f of finals) applyCharging(f, v, depart);
   // near-identical routes (same time and cost): keep the first one found (corridor options before detours)
   for (let i = finals.length - 1; i > 0; i--) if (finals.slice(0, i).some((f) => Math.abs(f.min - finals[i].min) < 0.6 && Math.abs(f.cost - finals[i].cost) < 0.25)) finals.splice(i, 1);
   let eff = frontier(finals.filter((c) => c === refC || c.cost < refC.cost - 0.05), 'min', 'cost');
