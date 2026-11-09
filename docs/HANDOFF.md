@@ -51,9 +51,9 @@ Saving split (tolls / fuel), tolls paid listed per option, saved places (chips),
 ## 5. Open items / next steps
 
 1. **Thomas's phone test** of the latest version (labels, Google Maps following the stops, Vérifier, places).
-2. Re-run the auditor on all trips after D-028…D-032; add trips from other origins; fix the Nantes gap (+6 min −2.27 €).
-3. Compare économe (Valhalla) vs complète on all trips (Valhalla answers this server again) — `tests/compare_modes.mjs`.
-4. Turn the Google-follow check into a permanent test.
+2. DONE 2026-11-09: auditor re-run (10/15 without gap; Nantes +6 min −2.27 €, Clermont borderline), économe vs complète
+   (économe not recommended, D-035), Google-follow check permanent (`tests/google_follow.mjs`, 111/116 diesel options,
+   30/31 e-208 on 3 trips). Left: the 5 Toulouse/Clermont misses, Nantes gap.
 5. Backlog: comfort penalty (postponed by Thomas), Escota/Arcos tolls, Duplex reverse direction, unnamed Vinci page-4
    stations, 4 unlocated APRR/AREA barriers (Dordives, Cruseilles ×2, Copponex), Capbreton, Western Europe,
    yearly toll refresh (1 February), traffic at predicted time for later legs.

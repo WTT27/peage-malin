@@ -294,3 +294,8 @@ MyPeugeot app, driving 10 km and reading again. He wants it automatic and offere
   Google starts from the phone's position. Result: 111/116 followed; the 5 left cost 2–5 € more (mostly Toulouse).
 - Audit (tests/audit.mjs, 15 trips): 10/15 without gap, app best compromise kept on 13/15. Known gaps: Nantes
   (+6 min −2.27 €), Clermont borderline (+4 min −9.79 € vs app +6 min −13.08 €), slow toll-free variants (+74…199 min).
+- Économe vs complète (`tests/compare_all.mjs`, each method in its own process): the public Valhalla server answers the
+  first trip, then refuses connections (each économe search sends it 100–160 requests); the app then falls back to the
+  complete method (notice shown). On the one real comparison (Bordeaux) économe used 21 TomTom requests instead of 103
+  but missed a 16 € saving (best compromise +20 min −13.54 € instead of +12 min −22.55 €). Decision: complète stays the
+  default; économe is not recommended.
