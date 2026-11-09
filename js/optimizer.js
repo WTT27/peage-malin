@@ -2,22 +2,20 @@
 //
 //  1. TomTom: fastest route (with instructions -> time at every point) + toll-free route.        (2 requests)
 //  2. Every option is described as pieces: "motorway from point i to j of the fastest route" (time read from
-//     the fastest route, toll priced exactly) or "free roads from A to B" (estimated with Valhalla, free).
+//     the fastest route, toll priced exactly) or "free roads from A to B" (checked with TomTom, live traffic).
 //     Options: per toll stretch, every combination of motorway / free pieces between interchanges;
-//     "motorway to exit X then free roads" and "free roads to X then motorway" (national roads such as the N10).
+//     "motorway to exit X then free roads" and "free roads to X then motorway" (national roads such as the N10);
+//     detours found by TomTom itself (small spots on the motorway blocked).
 //  3. Pruning: a free piece is only considered if it avoids at least MIN_SKIP € of toll.
-//  4. Valhalla times are calibrated on TomTom (toll-free route), the efficient options are shortlisted and
-//     only their free pieces are confirmed with TomTom (live traffic). Two rounds, re-calibrating in between.
-//  5. All requests are cached on the phone (TomTom 3 h, Valhalla 7 days).
+//  4. All requests are cached on the phone (TomTom 3 h).
 import { km, cumulative, routePoints } from './geo.js';
 import { priceRoute, priceSection, stationsNear, nearestLocal } from './tolls.js';
-import { route, localPoints, freeEstimate, freeMatrix } from './services.js';
-import { loadChargers, planCharging, quickCharge, evParams } from './charging.js';
+import { route, localPoints } from './services.js';
+import { loadChargers, planCharging, quickCharge, evParams, mergeStops } from './charging.js';
 
 const TRANSITION_SEC = 60;   // leaving / joining the motorway
 const MAX_NODES = 12;        // interchanges kept per toll stretch
 const MIN_SKIP = 0.5;        // € — a free piece must avoid at least this toll
-const SHORTLIST_1 = 9, SHORTLIST_2 = 6;
 const MAX_DETOURS = 24;
 const MAX_CHAIN = 12;        // follow-up detours: block the tolls of a detour too, step by step towards toll-free      // TomTom "avoid this spot" requests per trip (complete method)
 const APPROACH_KM = +(globalThis.PM_APPROACH ?? 5);       // free bypasses may also start this far before a toll stretch / end this far after it
@@ -64,7 +62,6 @@ export function prettyName(n) {
   return x.replace(/\b([an])(\d+)\b/gi, (m, a, d) => a.toUpperCase() + d) || String(n);
 }
 const cleanName = prettyName;
-const median = (a) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : null; };
 
 function frontier(items, tkey, ckey) {
   const out = [];
@@ -155,8 +152,7 @@ async function resolveLocals(points, preset = []) {
 }
 
 // Main entry. onProgress(fraction, text)
-// options.estimator: 'tomtom' (complete, default) or 'valhalla' (economical: free estimates + TomTom checks)
-export async function analyse(o, d, v, depart, onProgress = () => {}, { estimator = 'tomtom' } = {}) {
+export async function analyse(o, d, v, depart, onProgress = () => {}) {
   v = { ...v, depart };
   if (v.type === 'ev' && !v.noCharge) await loadChargers().catch(() => null);
   const opt = { maxSpeed: v.maxSpeed, depart: isoLocal(depart) };
@@ -234,10 +230,9 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     if (nodes.hasPost) nodes[nodes.length - 2].L = null;
   }
 
-  // ---- Valhalla estimates of free pieces (free service, no TomTom quota) ----
-  const est = new Map();             // "A|B" -> {sec, km}
+  // ---- free pieces checked with TomTom ----
   const ek = (A, B) => `${A[0].toFixed(5)},${A[1].toFixed(5)}|${B[0].toFixed(5)},${B[1].toFixed(5)}`;
-  const real = new Map();            // free pieces checked with TomTom: key -> {sec, km, mkm, mid, vsec} | null (invalid)
+  const real = new Map();            // free pieces checked with TomTom: key -> {sec, km, mkm, mid} | null (invalid)
   async function confirmPiece(A, B) {
     const key = ek(A, B);
     if (real.has(key)) return;
@@ -250,23 +245,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     }
     const rp = routePoints(r[0]);
     real.set(key, { sec: r[0].summary.travelTimeInSeconds, km: r[0].summary.lengthInMeters / 1000, mkm: motorwayKmOf(r[0], rp),
-      mid: rp[Math.floor(rp.length / 2)], late: rp[Math.floor(rp.length * 0.8)], geo: sample(rp, mwFlags(r[0], rp)), vsec: est.get(key)?.sec, roads: mainRoads(r[0]) });
-  }
-  let mode = estimator, notice = null;
-  const vJobs = [];
-  if (mode === 'valhalla') for (const nodes of allNodes) {
-    // matrices over windows of interchanges less than ~120 km apart (server limit 150 km)
-    const ok = nodes.filter((nd) => nd.L);
-    for (let s = 0; s < ok.length - 1;) {
-      let e = s + 1;
-      while (e + 1 < ok.length && km(ok[s].L, ok[e + 1].L) < 120) e++;
-      const win = ok.slice(s, e + 1).map((nd) => nd.L);
-      vJobs.push(freeMatrix(win, win, v.maxSpeed).then((m) => {
-        if (m) win.forEach((A, i) => win.forEach((B, j) => { if (i < j && m[i][j]) est.set(ek(A, B), m[i][j]); }));
-      }));
-      if (e === ok.length - 1) break;
-      s = Math.max(s + 1, Math.floor((s + e) / 2));
-    }
+      mid: rp[Math.floor(rp.length / 2)], late: rp[Math.floor(rp.length * 0.8)], geo: sample(rp, mwFlags(r[0], rp)), roads: mainRoads(r[0]) });
   }
   // escapes: free roads from X to destination / from origin to X (only when at least 1 € of toll is at stake)
   const escapes = [];
@@ -277,21 +256,6 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       const after = tollBetween(nd.idx, N).toll, before = tollBetween(0, nd.idx).toll;
       if (after !== null && after >= 1) escapes.push({ kind: 'sortie', nd, A: nd.L, B: d });
       if (before !== null && before >= 1) escapes.push({ kind: 'entrée', nd, A: o, B: nd.L });
-    }
-  }
-  let factor = 0.85;
-  if (mode === 'valhalla') {
-    for (const e of escapes) vJobs.push(freeEstimate(e.A, e.B, v.maxSpeed).then((r) => { if (r) est.set(ek(e.A, e.B), r); }));
-    let vDone = 0;
-    vJobs.forEach((j) => j.then(() => onProgress(0.12 + 0.45 * (++vDone / vJobs.length), 'Estimation des routes gratuites…')));
-    const vFree = freeEstimate(o, d, v.maxSpeed);
-    await Promise.all(vJobs);
-    // calibration: Valhalla is usually slower than TomTom on free roads
-    const vf = await vFree;
-    if (freeRoutes.length && vf) factor = Math.min(1.15, Math.max(0.55, freeRoutes[0].summary.travelTimeInSeconds / vf.sec));
-    if (!est.size && (escapes.length || allNodes.some((ns) => ns.length > 2))) {
-      mode = 'tomtom';
-      notice = 'Service d\'estimation gratuit indisponible : calcul complet avec TomTom.';
     }
   }
   // ---- options per toll stretch ----
@@ -309,7 +273,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
           if (!nodes[j].L || !nodes[e].L) { ok = false; break; }
           const skipped = tollBetween(nodes[j].idx, nodes[e].idx).toll;
           if (skipped === null || skipped < MIN_SKIP) { ok = false; break; }     // not worth leaving the motorway
-          if (mode === 'tomtom') {          // complete mode: chain of checked pieces between consecutive interchanges
+          {                                 // chain of checked pieces between consecutive interchanges
             // a run starting at the approach point goes straight to the 2nd interchange (and symmetrically at the end)
             const ids = [];
             for (let x = j; x <= e; x++) {
@@ -322,7 +286,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
               pieces.push({ type: 'free', A: nodes[ids[q]].L, B: nodes[ids[q + 1]].L });
             }
             if (!ok) break;
-          } else pieces.push({ type: 'free', A: nodes[j].L, B: nodes[e].L });
+          }
           free.push([j, e]);
         } else pieces.push(mw(nodes[j].idx, nodes[e].idx));
         j = e;
@@ -369,10 +333,10 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       const whole = nodes.title || `${nodes.road ? nodes.road + ' ' : ''}${nodes.startName} → ${nodes.endName}`;
       const pick = spots.length > 10 ? Array.from({ length: 10 }, (_, k) => spots[Math.floor(k * spots.length / 10)]) : spots;
       reqs.push({ boxes: pick.map((sp) => cover(sp.i, 0.5)), retry: pick.map((sp) => cover(sp.j, 1)), t: spots.reduce((a, sp) => a + sp.t, 0), name: `évite ${whole}` });
-      if (spots.length > 1 && mode === 'tomtom') for (const sp of spots) reqs.push({ boxes: chain(sp.i), retry: [cover(sp.j, 1)], t: sp.t, name: `évite ${nodes.road ? nodes.road + ' ' : ''}${sp.name}` });
+      if (spots.length > 1) for (const sp of spots) reqs.push({ boxes: chain(sp.i), retry: [cover(sp.j, 1)], t: sp.t, name: `évite ${nodes.road ? nodes.road + ' ' : ''}${sp.name}` });
     });
     reqs.sort((a, b) => b.t - a.t);
-    const todo = reqs.slice(0, mode === 'tomtom' ? MAX_DETOURS : 4);
+    const todo = reqs.slice(0, MAX_DETOURS);
     const level1 = [];
 
     // where does a route leave / rejoin the fastest one? (distance to the fastest route's segments, < 30 m)
@@ -445,7 +409,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       }
       return out;
     };
-    let budget = mode === 'tomtom' ? MAX_CHAIN : 3;
+    let budget = MAX_CHAIN;
     const uniq = new Map();
     for (const x of level1) if (!uniq.has(sig(x.r))) uniq.set(sig(x.r), { ...x, toll: priceRoute(x.r, depart).toll });
     let gen = [...uniq.values()].filter((x) => x.toll > 0.5).sort((a, b) => b.toll - a.toll);
@@ -472,8 +436,8 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
 
 
   const detourJob = runDetours();
-  if (mode === 'tomtom') {
-    // complete mode: every free piece used by an option and every escape checked with TomTom
+  {
+    // every free piece used by an option and every escape checked with TomTom
     const jobs = new Map();
     for (const ps of perStretch) for (const op of ps.opts) for (const p of op.pieces) if (p.type === 'free') jobs.set(ek(p.A, p.B), [p.A, p.B]);
     for (const e of escapes) jobs.set(ek(e.A, e.B), [e.A, e.B]);
@@ -484,9 +448,9 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
 
   await detourJob;
 
-  // ---- evaluation of a list of pieces (estimated or confirmed) ----
+  // ---- evaluation of a list of pieces ----
   function evalPieces(pieces) {
-    let sec = 0, kmv = 0, mkm = 0, toll = 0, estimated = false, transitions = 0, prev = null;
+    let sec = 0, kmv = 0, mkm = 0, toll = 0, transitions = 0, prev = null;
     const details = [];
     for (const p of pieces) {
       if (p.type === 'mw' && p.b <= p.a) continue;
@@ -500,20 +464,13 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
         if (t.toll === null) return null;
         toll += t.toll; details.push(...t.details);
       } else {
-        const key = ek(p.A, p.B);
-        if (real.has(key)) {
-          const r = real.get(key);
-          if (!r) return null;
-          sec += r.sec; kmv += r.km; mkm += r.mkm;
-        } else {
-          const e = est.get(key);
-          if (!e) return null;
-          sec += e.sec * factor; kmv += e.km; estimated = true;
-        }
+        const r = real.get(ek(p.A, p.B));
+        if (!r) return null;
+        sec += r.sec; kmv += r.km; mkm += r.mkm;
       }
     }
     sec += transitions * TRANSITION_SEC;
-    const c = { sec, km: kmv, mkm, toll, estimated, details };
+    const c = { sec, km: kmv, mkm, toll, details };
     Object.assign(c, energy(c, v));
     c.cost = c.toll + c.energy; c.min = c.sec / 60 + c.chargeMin;
     return c;
@@ -596,30 +553,10 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
     return { ref, list };
   }
 
-  // ---- shortlist + TomTom confirmation (2 rounds) ----
-  async function confirm(cs, p0, p1) {
-    const todo = new Map();
-    for (const c of cs) for (const p of c.pieces) if (p.type === 'free' && !real.has(ek(p.A, p.B))) todo.set(ek(p.A, p.B), p);
-    let n = 0;
-    await Promise.all([...todo.values()].map((p) => confirmPiece(p.A, p.B).then(() =>
-      onProgress(p0 + (p1 - p0) * (++n / todo.size), 'Vérification avec le trafic en temps réel…'))));
-  }
-  function shortlist(list, ref, size) {
-    const eff = frontier(list.filter((c) => c.cost < ref.cost - 0.3), 'min', 'cost').filter((c) => c.estimated);
-    if (!eff.length) return [];
-    const S = Math.max(...eff.map((c) => ref.cost - c.cost), 1), Tm = Math.max(...eff.map((c) => c.min - ref.min), 1);
-    return eff.map((c) => ({ c, s: (ref.cost - c.cost) / S - (c.min - ref.min) / Tm })).sort((a, b) => b.s - a.s).slice(0, size).map((x) => x.c);
-  }
   if (globalThis.PM_DEBUG) console.error('DEBUG nodes', allNodes.map((ns) => (ns.title || ns.startName) + ':' + ns.map((n) => (n.L ? 'L' : '-')).join('')),
     'opts', perStretch.map((p) => p.opts.length), 'duplexPiece', allNodes.map((ns) => ns.length === 2 && ns[0].L && ns[1].L ? JSON.stringify(real.get(ek(ns[0].L, ns[1].L))?.sec) : '-'));
-  let { ref, list } = buildAll();
+  const { ref, list } = buildAll();
   if (!ref) throw new Error('Prix des péages introuvable pour cet itinéraire');
-  await confirm(shortlist(list, ref, SHORTLIST_1), 0.6, 0.8);
-  const ratios = [...real.values()].filter((r) => r && r.vsec).map((r) => r.sec / r.vsec);
-  if (ratios.length >= 2) factor = median(ratios);
-  ({ ref, list } = buildAll());
-  await confirm(shortlist(list, ref, SHORTLIST_2), 0.8, 0.95);
-  ({ ref, list } = buildAll());
 
   // ---- final list: only confirmed options (+ TomTom fastest / alternatives / toll-free) ----
   // Google Maps waypoints: inside each free part, at places at least 1 km away from the fastest route's motorway
@@ -668,11 +605,11 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
       if (last && last.k === t.k && last.items[last.items.length - 1].i < t.i && t.i - last.items[last.items.length - 1].i < 400) last.items.push({ i: t.i, j: bj });
       else runs.push({ k: t.k, items: [{ i: t.i, j: bj }] });
     }
-    // 9 stops shared by length of the avoided parts; each part gets its two ends first, then evenly spaced points
-    const total = runs.reduce((t, r) => t + r.items.length, 0) || 1;
+    // few stops (Thomas: many stops for a short route): each avoided part gets its two ends, then one per ~40 km
+    // (samples are 4 km apart). More are added only where the check before opening Google Maps finds a leak (refineVia).
     const order = [];
     for (const r of runs) {
-      const q = Math.min(r.items.length, Math.max(r.items.length > 1 ? 2 : 1, Math.round(9 * r.items.length / total)));
+      const q = Math.min(r.items.length, r.items.length > 1 ? 2 + Math.floor(r.items.length / 10) : 1);
       for (let k = 0; k < q; k++) order.push(r.items[q === 1 ? 0 : Math.round(k * (r.items.length - 1) / (q - 1))]);
     }
     let js = [...new Set(order.map((x) => x.j))];
@@ -690,8 +627,8 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   const viaFor = (pieces, extraPts = []) => {
     const { geo, driven } = lineOf(pieces);
     const js = guards(geo, driven);
-    for (const q of extraPts) {                       // complete with the "away from motorway" points if room is left
-      if (js.length >= 9) break;
+    for (const q of extraPts) {                       // nothing to guard (rare): the "away from motorway" points
+      if (js.length >= 3) break;
       let bj = 0, bd = Infinity; geo.forEach((g, j) => { const dd = km(g.p, q); if (dd < bd) { bd = dd; bj = j; } });
       if (!js.includes(bj)) js.push(bj);
     }
@@ -702,7 +639,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   refC.lineMw = refC.line.mw;
   const finals = [refC];
   const roadsOf = (pieces) => [...new Set(pieces.filter((p) => p.type !== 'mw').flatMap((p) => (p.type === 'seg' ? p.roads : real.get(ek(p.A, p.B))?.roads || [])))];
-  for (const c of list) if (!c.estimated) {
+  for (const c of list) {
     const rd = roadsOf(c.pieces);
     finals.push({ ...c, label: rd.length ? `${c.label} (par ${rd.join(', ')})` : c.label, via: viaFor(c.pieces, viaOf(c.pieces)),
       ...(() => { const g = lineOf(c.pieces).geo; return { line: g.map((x) => x.p), lineMw: g.map((x) => x.mw) }; })() });
@@ -746,7 +683,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}, { estimato
   }
   rate(eff, refC);
   onProgress(1, 'Terminé');
-  return { eff, mode, notice, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, factor, fastest };
+  return { eff, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, fastest };
 }
 
 // best compromise, free wins
@@ -825,23 +762,36 @@ export async function checkTrip(fav, v) {
   return { level, title, lines, at: now.toISOString() };
 }
 
-// Before opening Google Maps: check the stops with TomTom ("would a router that likes motorways, going through these
-// stops, pay tolls this option avoids?"). If yes, add a stop on the option's own road next to each such toll stretch and
-// check again (up to 3 rounds). 1-3 TomTom requests. Returns {via, ok}.
-export async function refineVia(o, d, e, v, depart = new Date(), maxStops = 9) {
+// Before opening Google Maps: check the stops with TomTom ("would a router that takes the fastest roads, going through
+// these stops, pay tolls this option avoids, or leave its roads?"). If yes, add stops on the option's own road where it
+// goes wrong and check again (up to 4 rounds). Toll-free options are checked with "avoid tolls", as the app tells the
+// user to switch it on. fixed: charging stops of the e-208, always kept (they use some of Google's 9 stops).
+// 1-4 TomTom requests. Returns {via, ok} (via without the fixed stops).
+export async function refineVia(o, d, e, v, depart = new Date(), maxStops = 9, fixed = []) {
   if (!e.line || !e.line.length) return { via: e.via || [], ok: true };
+  maxStops = Math.max(1, maxStops - fixed.length);
+  const free = e.toll < 0.05;
   const nearestJ = (p) => { let bj = 0, bd = Infinity; e.line.forEach((q, j) => { const dd = km(q, p); if (dd < bd) { bd = dd; bj = j; } }); return [bj, bd]; };
   let js = [...new Set((e.via || []).map((p) => nearestJ(p)[0]))].sort((a, b) => a - b);
-  let best = null;                                  // stops giving the fewest extra tolls so far
+  let best = null;                                  // stops giving the fewest problems so far
   for (let round = 0; round < 4; round++) {
     const via = js.map((j) => e.line[j]);
-    const rs = await route(o, d, { via, depart: isoLocal(depart), maxSpeed: v.maxSpeed });
+    const rs = await route(o, d, { via: mergeStops(e.line, via, fixed), depart: isoLocal(depart), maxSpeed: v.maxSpeed, avoidTolls: free });
     if (!rs.length) break;
-    const r = rs[0], pr = priceRoute(r, depart);
-    if (!pr.unpriced && pr.toll <= e.toll + 0.5) return { via, ok: true };
-    const extra = pr.unpriced ? 1e6 : pr.toll - e.toll;
-    if (!best || extra < best.extra) best = { via, extra };
-    const rp = routePoints(r), adds = [];
+    const r = rs[0], pr = priceRoute(r, depart), rp = routePoints(r);
+    // parts of the option's line the test route does not pass near (> 1.5 km): Google would take other roads there
+    const away = [];
+    { let run = null;
+      for (let j = 0; j < e.line.length; j++) {
+        let dmin = Infinity; for (let i = 0; i < rp.length; i += 2) { const dd = km(rp[i], e.line[j]); if (dd < dmin) dmin = dd; if (dmin < 1.5) break; }
+        if (dmin >= 1.5) { if (!run) away.push(run = { a: j, b: j }); else run.b = j; } else run = null;
+      } }
+    const awayLen = away.reduce((t, ru) => t + (ru.b - ru.a + 1), 0) / e.line.length;
+    const tollOk = !pr.unpriced && pr.toll <= e.toll + 0.5;
+    if (tollOk && awayLen <= 0.1) return { via, ok: true };
+    const bad = (pr.unpriced ? 1e6 : Math.max(0, pr.toll - e.toll)) + awayLen * 20;
+    if (!best || bad < best.bad) best = { via, bad };
+    const adds = [];
     for (const sct of r.sections || []) {
       if (sct.sectionType !== 'TOLL_ROAD') continue;
       // toll stretch of the test route that the option does not take (all of it): find where the option is level with its
@@ -867,6 +817,8 @@ export async function refineVia(o, d, e, v, depart = new Date(), maxStops = 9) {
         if (dmin > 0.5) adds.push(j);
       }
     }
+    // a stop in the middle of each long part where the test route left the option's roads (the longest two)
+    if (awayLen > 0.1) for (const ru of [...away].sort((x, y) => (y.b - y.a) - (x.b - x.a)).slice(0, 2)) if (ru.b - ru.a >= 2) adds.push(Math.round((ru.a + ru.b) / 2));
     if (!adds.length) break;
     const keep = new Set(adds);
     let all = [...new Set([...js, ...adds])].sort((a, b) => a - b);
@@ -895,7 +847,21 @@ export function splitTrip(o, d, e, via) {
   const X = e.split.at, jx = idx(X);
   const near = (p) => km(p, X) < 1;
   const a = via.filter((p) => idx(p) < jx && !near(p)), b = via.filter((p) => idx(p) > jx && !near(p));
-  return [{ from: o, to: X, via: a, avoidTolls: e.split.freeFirst }, { from: X, to: d, via: b, avoidTolls: !e.split.freeFirst }];
+  return [{ from: o, to: X, via: a, avoidTolls: e.split.freeFirst, line: e.line.slice(0, jx + 1) },
+    { from: X, to: d, via: b, avoidTolls: !e.split.freeFirst, line: e.line.slice(jx) }];
+}
+
+// Two-part trip with the stops of each part checked on its own (refineVia on that part of the option's line: the free
+// part with "avoid tolls", the motorway part allowed the option's toll). Returns the legs, or null for a one-link option.
+export async function refineLegs(o, d, e, v, depart = new Date(), fixed = []) {
+  const legs = splitTrip(o, d, e, e.via || []);
+  if (!legs) return null;
+  const parts = fixed.length ? splitTrip(o, d, e, fixed).map((L) => L.via) : [[], []];
+  for (const [k, L] of legs.entries()) {
+    const r = await refineVia(L.from, L.to, { line: L.line, via: L.via, toll: L.avoidTolls ? 0 : e.toll }, v, depart, 9, parts[k]);
+    L.via = mergeStops(L.line, r.via, parts[k]);
+  }
+  return legs;
 }
 
 // Google Maps directions link with waypoints that force the chosen path (max 9 waypoints)
