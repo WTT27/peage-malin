@@ -23,10 +23,19 @@ const [, , dest, veh = 'diesel', when = '2026-11-13T08:00'] = process.argv;
 const D = { lille: [50.6292, 3.0573], nantes: [47.2184, -1.5536], lyon: [45.7578, 4.832], bordeaux: [44.84123, -0.58004], brive: [45.1585, 1.53324], demangevelle: [47.9258, 6.03171] };
 const o = [49.00297, 1.3155];
 const t0 = Date.now();
-const r = await analyse(o, D[dest], DEFAULT_VEHICLES[veh], new Date(when), () => {}, { estimator: process.env.MODE || 'tomtom' });
+const vv = { ...DEFAULT_VEHICLES[veh], ...JSON.parse(process.env.VEH || '{}') };
+const r = await analyse(o, D[dest], vv, new Date(when), () => {}, { estimator: process.env.MODE || 'tomtom' });
 if (r.notice) console.log('NOTICE:', r.notice);
 const hm = (m) => `${Math.floor(Math.round(m) / 60)} h ${String(Math.round(m) % 60).padStart(2, '0')}`;
 console.log(`${dest} ${veh} [${r.mode}]: ${r.count} évalués, ${r.eff.length} efficaces, TomTom ${stats.api} requêtes (+${stats.cached} cache), Valhalla ${stats.valhalla}, confirmés ${r.confirmed}, facteur ${r.factor?.toFixed(2)}, ${Math.round((Date.now() - t0) / 1000)} s`);
-for (const e of r.eff) console.log(`  ${e.best ? '⭐' : e.freeWin ? '🟢' : '  '} +${String(Math.round(e.dMin)).padStart(3)}'  -${e.save.toFixed(2).padStart(6)} €  ${hm(e.min)}  ${e.cost.toFixed(2)} €  ${e.label.slice(0, 100)}`);
+for (const e of r.eff) {
+  console.log(`  ${e.best ? '⭐' : e.freeWin ? '🟢' : '  '} +${String(Math.round(e.dMin)).padStart(3)}'  -${e.save.toFixed(2).padStart(6)} €  ${hm(e.min)}  ${e.cost.toFixed(2)} €  ${e.label.slice(0, 100)}`);
+  if (e.charge) {
+    const c = e.charge;
+    if (!c.ok) console.log('        ⚠️ pas de borne rapide atteignable trouvée');
+    for (const s of c.stops) console.log(`        🔌 ${s.brand} ${s.name} ${s.kw} kW à ${Math.round(s.posKm)} km, ${Math.floor(s.eta)}h${String(Math.round(s.eta % 1 * 60)).padStart(2, '0')}, ${s.arrivePct}→${s.leavePct} %, ${s.kwh.toFixed(1)} kWh × ${s.price} = ${s.eur.toFixed(2)} €, ${s.min} min${s.lunch ? ' 🍽️' : ''}${s.off > 0.3 ? ` (à ${s.off.toFixed(1)} km de la route)` : ''}`);
+    if (c.ok) console.log(`        arrivée ${c.arrivePct} % · recharge comptée ${Math.round(e.chargeMin)} min${c.winter ? ' · hiver' : ''}`);
+  }
+}
 const best = r.eff.find((e) => e.best);
 if (best) console.log('  GoogleMaps:', googleMapsUrl(o, D[dest], best.via));

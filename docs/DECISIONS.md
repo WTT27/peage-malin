@@ -229,3 +229,26 @@ Each important decision, with its reason. Newest at the bottom.
   need went from 31.9 to 32.8 kWh (threshold 70 % of the battery per stop). That threshold also made the "+2 min" of the
   exit-24 option artificial (it saved a whole stop). New model: one stop can bring up to 80 % of the battery; the part
   above 70 % is charged at half speed. Result: Duplex by A12 + A5 to Chaumont then free roads = +16 min −12.52 €.
+
+## D-033 — e-208: real charging stops at real chargers, Thomas's battery rules (2026-11-09)
+Thomas's answers: fast chargers (100 kW max for the car), card payment or Chargemap pass (any network); leaves at
+**90 %** (aged battery) — adjustable per trip; arriving under 10 % is fine, optional wanted arrival level per trip;
+charging at destination possible; consumption **15 kWh/100 km** mixed roads (his last 8,000 km), **18** motorway at 110 in
+summer, **20** in winter; lunch during a charge = option (off by default); home price = average Tempo blue/white
+off-peak (Aug 2026 grid 0.1356 / 0.1536 → **0.145 €/kWh**); option "ignore charging" (unlimited range: kWh × home price,
+no stops). He asked whether the app can read the battery level from MyPeugeot: no — Stellantis has no public API; the
+unofficial ones need his account credentials on a server, which a phone-only static app cannot do safely. Manual field.
+- Chargers: data.gouv.fr IRVE consolidated file (2026-11-09), CCS ≥ 50 kW, open access → `app/data/chargers.json`
+  (8,391 sites, `tools/build_chargers.py`). Price: operator's own €/kWh text when clear (1,892 sites, e.g. Lidl 0.39,
+  Ionity 0.69), else a per-network estimate (`NET_PRICE` in `app/js/charging.js`), else the settings price (0.54).
+  480 sites with limited opening hours are only used Mon–Sat 8:00–19:00.
+- e-208 charging curve (kW vs battery %): 95 below 20 %, 75 to 45 %, 55 to 60 %, 40 to 75 %, 25 to 85 %, 12 above;
+  ×0.8 in winter; capped by the station power. 10 min per stop (parking, payment) + detour (both ways) to stations off
+  the road. On motorway parts only chargers within 350 m count (service areas); elsewhere up to 2.5 km.
+- Planner: battery simulated along each final route's line; reserve 8 % while driving (setting); a small search
+  (8 candidates × 3 levels) keeps the plan with least "charging minutes + 3 min per €". One stop charges to 80 %
+  (85 % if that finishes the trip, 90 % at lunch). Lunch window 11:45–13:45: the lunch duration (45 min, setting) is not
+  counted as lost time. Winter = November to March (departure date).
+- The search itself still uses a quick estimate (same curve, no locations); real stops are planned on the final routes.
+- Each option shows its stops (network, place, time, % before/after, kWh, €, minutes, lunch) and the arrival %;
+  the charging stops are added to the Google Maps waypoints. No reachable charger → warning + 20 min penalty.

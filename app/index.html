@@ -50,6 +50,12 @@
         <button type="button" data-v="ev">e-208</button>
       </div>
     </div>
+    <div id="evBox" class="evbox hidden">
+      <label class="field inline"><span>🔋 Batterie au départ (%)</span><input id="evStart" type="number" min="5" max="100" step="5" inputmode="numeric"></label>
+      <label class="field inline"><span>Batterie voulue à l'arrivée (%) <small>facultatif</small></span><input id="evArrive" type="number" min="0" max="90" step="5" inputmode="numeric" placeholder="8"></label>
+      <label class="tick"><input id="evLunch" type="checkbox"> 🍽️ Déjeuner pendant une recharge</label>
+      <label class="tick"><input id="evNoCharge" type="checkbox"> ♾️ Ignorer la recharge (autonomie illimitée)</label>
+    </div>
     <label class="field">
       <span>Départ prévu</span>
       <div class="row">
@@ -105,11 +111,14 @@
     <label class="field inline"><span>Consommation (L/100 km)</span><input id="sLper100" type="number" step="0.1"></label>
     <label class="field inline"><span>Prix du gazole (€/L)</span><input id="sDiesel" type="number" step="0.01"></label>
     <h3>e-208</h3>
-    <label class="field inline"><span>Autoroute à 110 (kWh/100 km)</span><input id="sKwhM" type="number" step="0.5"></label>
+    <label class="field inline"><span>Autoroute à 110, été (kWh/100 km)</span><input id="sKwhM" type="number" step="0.5"></label>
+    <label class="field inline"><span>Autoroute à 110, hiver nov.–mars (kWh/100 km)</span><input id="sKwhMW" type="number" step="0.5"></label>
     <label class="field inline"><span>Autres routes (kWh/100 km)</span><input id="sKwhO" type="number" step="0.5"></label>
     <label class="field inline"><span>Batterie utile (kWh)</span><input id="sBatt" type="number" step="1"></label>
     <label class="field inline"><span>Électricité maison (€/kWh)</span><input id="sHome" type="number" step="0.01"></label>
-    <label class="field inline"><span>Recharge rapide (€/kWh)</span><input id="sFast" type="number" step="0.01"></label>
+    <label class="field inline"><span>Recharge rapide, réseau au prix inconnu (€/kWh)</span><input id="sFast" type="number" step="0.01"></label>
+    <label class="field inline"><span>Durée du déjeuner (min)</span><input id="sLunch" type="number" step="5"></label>
+    <label class="field inline"><span>Réserve minimum en roulant (%)</span><input id="sReserve" type="number" step="1"></label>
     <div class="row end">
       <button value="cancel" class="small-btn">Annuler</button>
       <button value="ok" id="sSave" class="primary small">Enregistrer</button>
