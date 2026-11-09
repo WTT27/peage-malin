@@ -32,7 +32,7 @@ if (m || mc) history.replaceState(null, '', location.pathname + location.search)
 
 $('btnSettings').onclick = () => {
   $('sKey').value = getKey();
-  $('sLper100').value = V.diesel.lPer100; $('sDiesel').value = V.diesel.eurPerL;
+  $('sLper100').value = V.diesel.lPer100; $('sDiesel').value = (Math.round(V.diesel.eurPerL * 100) / 100).toFixed(2);
   $('sKwhM').value = V.ev.kwhMotorway; $('sKwhMW').value = V.ev.kwhMotorwayWinter; $('sLunch').value = V.ev.lunchMin;
   $('sReserve').value = V.ev.reservePct; $('sKwhO').value = V.ev.kwhOther; $('sBatt').value = V.ev.batteryKwh;
   $('sHome').value = V.ev.homeEurKwh; $('sFast').value = V.ev.fastEurKwh;
@@ -46,8 +46,9 @@ $('settings').addEventListener('close', () => {
   if ($('settings').returnValue !== 'ok') return;
   setKey($('sKey').value);
   const num = (id, def) => { const x = parseFloat($(id).value); return Number.isFinite(x) && x > 0 ? x : def; };
-  V.diesel.lPer100 = num('sLper100', V.diesel.lPer100); V.diesel.eurPerL = num('sDiesel', V.diesel.eurPerL);
-  V.diesel.priceSetByUser = true;
+  V.diesel.lPer100 = num('sLper100', V.diesel.lPer100);
+  const dp = num('sDiesel', V.diesel.eurPerL);              // a typed price stops the automatic daily price
+  if (Math.abs(dp - Math.round(V.diesel.eurPerL * 100) / 100) > 0.001) { V.diesel.eurPerL = dp; V.diesel.priceSetByUser = true; }
   V.ev.kwhMotorway = num('sKwhM', V.ev.kwhMotorway); V.ev.kwhOther = num('sKwhO', V.ev.kwhOther);
   V.ev.kwhMotorwayWinter = num('sKwhMW', V.ev.kwhMotorwayWinter); V.ev.lunchMin = num('sLunch', V.ev.lunchMin);
   V.ev.reservePct = num('sReserve', V.ev.reservePct);
@@ -81,7 +82,9 @@ const dec = (x) => String(x).replace('.', ',');
 // measured consumption usable for the route planning (enough km in that group)
 function measured(c) {
   const st = c?.stats || {}, ok = (g) => (g && g.km >= 150 ? g.kwh100 : null);
-  return { mwSummer: ok(st.ete_autoroute), mwWinter: ok(st.hiver_autoroute), otherSummer: ok(st.ete_autres), otherWinter: ok(st.hiver_autres) };
+  // motorway figures replace the settings only once Peugeot's trip energy is calibrated on real battery drops
+  const real = c?.calib?.source === 'mesure', mw = (g) => (real ? ok(g) : null);
+  return { mwSummer: mw(st.ete_autoroute), mwWinter: mw(st.hiver_autoroute), otherSummer: ok(st.ete_autres), otherWinter: ok(st.hiver_autres) };
 }
 function renderCar() {
   const box = $('carLive');
@@ -317,7 +320,7 @@ $('form').addEventListener('submit', async (ev) => {
     }
     if (v.type === 'diesel' && !V.diesel.priceSetByUser) {
       const p = await dieselPrice();
-      if (p) { v.eurPerL = p; V.diesel.eurPerL = p; saveSettings(); }
+      if (p) { const r = Math.round(p * 100) / 100; v.eurPerL = r; V.diesel.eurPerL = r; saveSettings(); }
     }
     const depart = $('when').value ? new Date($('when').value) : new Date();
     const t0 = Date.now();
