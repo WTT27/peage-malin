@@ -149,7 +149,7 @@ if (cmd === 'setup') {
   if (!t.some((x) => x.event === 'connected')) { console.log('❌ Connexion au serveur de commandes impossible : ' + JSON.stringify(t)); process.exit(1); }
   console.log('✅ Commandes à distance activées.');
   // daily job at 05:50 (replaces an older line)
-  const line = `50 5 * * * cd ${dirname(HERE)} && ${process.execPath} car/charge.mjs morning >> ${join(DIR, 'charge.log')} 2>&1`;
+  const line = `50 5 * * * cd ${dirname(HERE)} && ${process.execPath} --experimental-websocket car/charge.mjs morning >> ${join(DIR, 'charge.log')} 2>&1`;
   let tab = ''; try { tab = execSync('crontab -l', { encoding: 'utf8' }); } catch { /* empty */ }
   tab = tab.split('\n').filter((l) => l.trim() && !l.includes('car/charge.mjs')).join('\n') + '\n' + line + '\n';
   execSync('crontab -', { input: tab });
