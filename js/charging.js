@@ -76,16 +76,31 @@ function stationsAlong(line, cum, scale, mw, maxKm = 2.5) {
   for (let j = 0; j < line.length; j++) {
     if (j && cum[j] - cum[j - 1] < 0.2 && j % 3) continue;
     const [lat, lon] = line[j], lim = mw && mw[j] ? 0.35 : maxKm;
-    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
-      for (const i of GRID.get(`${Math.floor(lat / CELL) + a},${Math.floor(lon / CELL) + b}`) || []) {
-        const s = DATA.s[i], d = km(line[j], s);
+    // distance to the road between the previous point and this one (points can be 1–3 km apart: a service area
+    // between two points must not be missed)
+    const a = j ? line[j - 1] : line[j], kx = 111.32 * Math.cos(lat * Math.PI / 180), ky = 110.57;
+    const vx = (lon - a[1]) * kx, vy = (lat - a[0]) * ky, vv = vx * vx + vy * vy;
+    for (let da = -1; da <= 1; da++) for (let db = -1; db <= 1; db++) {
+      for (const i of GRID.get(`${Math.floor(lat / CELL) + da},${Math.floor(lon / CELL) + db}`) || []) {
+        const s = DATA.s[i];
+        const wx = (s[1] - a[1]) * kx, wy = (s[0] - a[0]) * ky, t = vv > 0 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / vv)) : 1;
+        const d = Math.hypot(wx - t * vx, wy - t * vy);
         if (d > lim) continue;
-        const cur = best.get(i);
-        if (!cur || d < cur.d) best.set(i, { i, d, pos: cum[j] * scale, j });
+        const cur = best.get(i), pos = (j ? cum[j - 1] + t * (cum[j] - cum[j - 1]) : 0) * scale;
+        if (!cur || d < cur.d) best.set(i, { i, d, pos, j });
       }
     }
   }
   return [...best.values()].sort((x, y) => x.pos - y.pos);
+}
+
+// fast chargers along a route for the "En route" check: [{posKm, name, kw}] (only those right beside the road on a
+// motorway, up to 2.5 km away elsewhere)
+export function routeStations(line, routeKm, mw = null) {
+  if (!DATA || !line || line.length < 2) return [];
+  const cum = cumulative(line), scale = routeKm / (cum[cum.length - 1] || routeKm);
+  return stationsAlong(line, cum, scale, mw).map((s) => { const st = DATA.s[s.i];
+    return { posKm: s.pos, name: `${DATA.brands[st[4]] || ''} ${st[6] || ''}`.trim(), kw: st[2] }; });
 }
 
 // detour to reach a station that is not right on the road (both ways), minutes
@@ -101,17 +116,32 @@ export function planCharging(line, c, v, depart, lineMw = null) {
   const home = v.homeEurKwh;
   if (v.noCharge) return { stops: [], energy: c.kwh * home, chargeMin: 0, arrivePct: null, ok: true };
   const cum = cumulative(line), L = c.km, scale = L / (cum[cum.length - 1] || L);
-  const rate = c.kwh / L, spk = c.sec / L;                 // kWh per km, seconds per km
+  const rate = c.kwh / L, spk = c.sec / L;                 // kWh per km (average), seconds per km
+  // energy used from the start to each point: motorway km at the motorway rate, other km at the other rate (D-037),
+  // scaled so that the whole route uses c.kwh; E(a, b) = kWh from km a to km b
+  const ek = [0];
+  for (let j = 1; j < line.length; j++) ek.push(ek[j - 1] + (cum[j] - cum[j - 1]) * scale * (lineMw && lineMw[j] && lineMw[j - 1] ? P.kM : P.kO) / 100);
+  const norm = c.kwh / (ek[ek.length - 1] || c.kwh);
+  const eAt = (pos) => {
+    const x = pos / scale;
+    let lo = 0, hi = cum.length - 1;
+    if (x >= cum[hi]) return ek[hi] * norm + (pos - cum[hi] * scale) * rate;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= x) lo = mid; else hi = mid; }
+    const t = cum[hi] > cum[lo] ? (x - cum[lo]) / (cum[hi] - cum[lo]) : 0;
+    return (ek[lo] + t * (ek[hi] - ek[lo])) * norm;
+  };
+  const E = (a, b) => Math.max(0, eAt(b) - eAt(a));
+  const offRate = P.kO / 100;                              // detour to a station off the road
   const B = P.batt, t0 = depart.getHours() + depart.getMinutes() / 60;
   const priceOf = (st) => st[5] ?? NET_PRICE[DATA.brands[st[4]]] ?? v.fastEurKwh;
   let cands = null;
 
   // one stop at station s, arriving with the state {soc, pos, clock, lunchDone}
   function stopAt(s, st) {
-    const arrive = st.soc - (s.pos - st.pos) * rate - s.d * 2 * rate;
+    const arrive = st.soc - E(st.pos, s.pos) - s.d * 2 * offRate;
     const eta = t0 + (st.clock + (s.pos - st.pos) * spk) / 3600;
     const atLunch = !st.lunchDone && eta >= 11.75 && eta <= 13.75;
-    const needRest = (L - s.pos) * rate + P.target * B + 0.02 * B + s.d * 2 * rate;   // small margin
+    const needRest = E(s.pos, L) + P.target * B + 0.02 * B + s.d * 2 * offRate;   // small margin
     const cap = (atLunch ? 0.9 : needRest <= 0.85 * B ? 0.85 : 0.8) * B;
     const leave = Math.max(arrive, Math.min(needRest, cap));
     const kw = s.st[2], cmin = chargeMinutes(arrive / B, leave / B, B, kw, P.winter), dmin = detourMin(s.d);
@@ -125,10 +155,10 @@ export function planCharging(line, c, v, depart, lineMw = null) {
   }
 
   function solve(st, depth, n) {
-    if (st.soc >= (L - st.pos) * rate + P.target * B - 1e-6) return { stops: [], counted: 0, eur: 0, kwh: 0, end: st, score: 0 };
+    if (st.soc >= E(st.pos, L) + P.target * B - 1e-6) return { stops: [], counted: 0, eur: 0, kwh: 0, end: st, score: 0 };
     if (n >= 8) return null;
     cands = cands || stationsAlong(line, cum, scale, lineMw);
-    let reach = cands.filter((s) => s.pos > st.pos + 1 && st.soc - (s.pos - st.pos) * rate - s.d * 2 * rate >= P.reserve * B - 1e-6)
+    let reach = cands.filter((s) => s.pos > st.pos + 1 && st.soc - E(st.pos, s.pos) - s.d * 2 * offRate >= P.reserve * B - 1e-6)
       .map((s) => ({ ...s, st: DATA.s[s.i] }));
     if (!reach.length) return null;
     {                                               // limited opening hours: only Mon–Sat 8:00–19:00
@@ -163,7 +193,7 @@ export function planCharging(line, c, v, depart, lineMw = null) {
 
   const plan = solve({ soc: P.start * B, pos: 0, clock: 0, lunchDone: !P.lunch }, DEPTH, 0);
   if (!plan) return { stops: [], ok: false, energy: null, chargeMin: null };
-  const arriveKwh = plan.end.soc - (L - plan.end.pos) * rate;
+  const arriveKwh = plan.end.soc - E(plan.end.pos, L);
   const homeKwh = Math.max(0, c.kwh - plan.kwh);
   return { stops: plan.stops, ok: true, energy: homeKwh * home + plan.eur, chargeMin: plan.counted,
     arrivePct: Math.round(arriveKwh / B * 100), winter: P.winter, lunchWanted: P.lunch };
