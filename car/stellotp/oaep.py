@@ -2,8 +2,11 @@ import Crypto
 from Crypto import Random
 from Crypto.Cipher.PKCS1_OAEP import PKCS1OAEP_Cipher
 from Crypto.Util.number import ceil_div, bytes_to_long, long_to_bytes
-from Crypto.Util.py3compat import bord
 from Crypto.Util.strxor import strxor
+
+
+def bord(x):  # was Crypto.Util.py3compat.bord, removed in pycryptodome 4.4; on Python 3 bytes items are already ints
+    return x if isinstance(x, int) else ord(x)
 
 
 class MyOAEP(PKCS1OAEP_Cipher):
