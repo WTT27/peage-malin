@@ -175,8 +175,19 @@ function renderCharge() {
     else if (M) html += `<p class="old">${M.ok ? '✅' : '⚠️'} ${M.action === 'stop' ? 'Arrêt' : 'Démarrage'} de ${hhmm(M.at)} : ${M.ok ? 'fait' : 'pas confirmé'} — ${M.msg}.</p>`;
     else if (car.plugged === false) html += '<p class="old">La voiture n\'est pas branchée (dernière info).</p>';
   }
+  // notifications (results, red days, trip alerts) arrive through the free ntfy app: explain once
+  let ntfyDone = false; try { ntfyDone = JSON.parse(localStorage.getItem('ntfyOk') || 'false'); } catch { /* ignore */ }
+  if (ch.active && !ntfyDone) {
+    const at = `${carTopic()}-alerte`;
+    html += `<div class="ntfy">📲 <b>Pour recevoir les notifications</b> (résultat des commandes, jours rouges, alertes en route) :
+      installez l'appli gratuite <b>ntfy</b> (Play Store), puis touchez <a href="https://ntfy.sh/${at}" target="_blank" rel="noopener">ce lien</a>
+      et choisissez « S'abonner ». Ou dans ntfy : « + » et le nom <code>${at}</code>.
+      <button type="button" data-a="ntfyok">C'est fait</button></div>`;
+  }
   box.className = `card chargecard${red ? ' red' : ''}`;
   box.innerHTML = html;
+  const nok = box.querySelector('[data-a=ntfyok]');
+  if (nok) nok.onclick = () => { try { localStorage.setItem('ntfyOk', 'true'); } catch { /* ignore */ } renderCharge(); renderEnroute(); };
   const send = async (type) => {
     try {
       const r = await fetch(`https://ntfy.sh/${carTopic()}-commande`, { method: 'POST', body: JSON.stringify({ type, date: md }) });
@@ -268,7 +279,7 @@ function renderEnroute() {
   box.querySelector('[data-a=refresh]').onclick = () => fetchCar();
   box.querySelector('[data-a=end]').onclick = () => endTrip(false);
   const ok = box.querySelector('[data-a=ntfyok]');
-  if (ok) ok.onclick = () => { store('ntfyOk', true); renderEnroute(); };
+  if (ok) ok.onclick = () => { store('ntfyOk', true); renderEnroute(); renderCharge(); };
   if (t.sent === false) postTrip({ type: 'start', trip: t }).then(() => { t.sent = true; store('enroute', t); }).catch(() => {});
   if (res.done && home) { endTrip(true); return; }
   enrouteTimer = setInterval(() => { if (!document.hidden) fetchCar(); }, 60e3);
