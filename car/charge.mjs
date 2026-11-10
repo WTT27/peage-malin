@@ -23,7 +23,7 @@ const PY = join(DIR, 'venv', 'bin', 'python');
 const API = 'https://api.groupe-psa.com';
 const conf = readJson('car.json');
 if (!conf?.vehicleId) { console.log('Lancer d\'abord : node car/setup.mjs'); process.exit(1); }
-const cmd = process.argv[2] || 'check';
+const cmd = process.argv[2] || (readJson('remote.json') ? 'check' : 'setup');      // nothing activated yet → setup
 const parisDate = (d = new Date()) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });        // YYYY-MM-DD
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
