@@ -23,15 +23,15 @@ const PY = join(DIR, 'venv', 'bin', 'python');
 const API = 'https://api.groupe-psa.com';
 const conf = readJson('car.json');
 if (!conf?.vehicleId) { console.log('Lancer d\'abord : node car/setup.mjs'); process.exit(1); }
-const cmd = process.argv[2] || (readJson('remote.json') ? 'check' : 'setup');      // nothing activated yet → setup
+const cmd = process.argv[2] || (readJson('remote.json')?.mqtt?.refresh ? 'check' : 'setup');      // not fully set up yet → setup
 const parisDate = (d = new Date()) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });        // YYYY-MM-DD
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------- helpers ----------
-async function psa(path, { method = 'GET', body = null, extra = {} } = {}) {
+async function psa(path, { method = 'GET', body = null, extra = {}, locale = true } = {}) {
   const c = await appConfig();
   const sep = path.includes('?') ? '&' : '?';
-  const r = await fetch(`${API}${path}${sep}client_id=${c.id}&locale=${c.locale}`, { method,
+  const r = await fetch(`${API}${path}${sep}client_id=${c.id}${locale ? '&locale=' + c.locale : ''}`, { method,
     headers: { Authorization: 'Bearer ' + await token(), 'User-Agent': 'okhttp/4.8.0', Accept: 'application/hal+json',
       'x-introspect-realm': c.realm, ...(body ? { 'Content-Type': 'application/json' } : {}), ...extra },
     body: body ? JSON.stringify(body) : undefined });
@@ -71,8 +71,8 @@ async function mqttToken(force = false) {
   const url = '/connectedcar/v4/virtualkey/remoteaccess/token';
   let r = null;
   if (m.refresh && m.refreshExp > Date.now()) {
-    r = await psa(url, { method: 'POST', body: { grant_type: 'refresh_token', refresh_token: m.refresh } });
-    if (!r.j?.access_token) log('mqtt refresh refused:', r.status);
+    r = await psa(url, { method: 'POST', locale: false, body: { grant_type: 'refresh_token', refresh_token: m.refresh } });
+    if (!r.j?.access_token) log('mqtt refresh refused:', r.status, r.txt.slice(0, 300));
   }
   if (!r?.j?.access_token) {
     const day = parsedDay(rem);
@@ -80,8 +80,12 @@ async function mqttToken(force = false) {
     const o = py({ cmd: 'otp' }).find((x) => 'otp' in x || x.error);
     if (!o?.otp) throw new Error('code de sécurité impossible : ' + (o?.error || '?') + ' — relancer  node car/charge.mjs setup');
     day.n++; rem.otpDay = day;
-    r = await psa(url, { method: 'POST', body: { grant_type: 'password', password: o.otp } });
-    if (!r.j?.access_token) { writeJson('remote.json', rem); throw new Error(`jeton de commande refusé (${r.status})`); }
+    r = await psa(url, { method: 'POST', locale: false, body: { grant_type: 'password', password: o.otp } });
+    if (!r.j?.access_token) {
+      writeJson('remote.json', rem);
+      log('mqtt token refused:', r.status, r.txt.slice(0, 500));
+      throw new Error(`jeton de commande refusé (${r.status}) : ${r.txt.slice(0, 500)}`);
+    }
   }
   rem.mqtt = { access: r.j.access_token, exp: Date.now() + (+r.j.expires_in || 900) * 1000,
     refresh: r.j.refresh_token || m.refresh, refreshExp: r.j.refresh_token ? Date.now() + 3 * 86400e3 - 3600e3 : m.refreshExp };
@@ -130,21 +134,27 @@ if (cmd === 'setup') {
     console.log('Installation de l\'environnement Python (une fois)…');
     execSync(`python3 -m venv "${join(DIR, 'venv')}" && "${PY}" -m pip install -q pycryptodome "paho-mqtt>=2" requests`, { stdio: 'inherit' });
   }
-  const assoc = await psa('/applications/cvs/v4/mauv/car-associations', { extra: { 'x-transaction-id': '1234' } });
-  const customerId = Array.isArray(assoc.j) && assoc.j[0]?.customer;
-  if (!customerId) { console.log('❌ Compte client introuvable (' + assoc.status + ').'); process.exit(1); }
-  const vin = (await vehicles()).find((v) => v.id === conf.vehicleId)?.vin;
-  if (!vin) { console.log('❌ Véhicule introuvable.'); process.exit(1); }
-  const sms = await psa('/applications/cvs/v4/mobile/smsCode', { method: 'POST' });
-  if (!sms.ok) { console.log(`❌ Peugeot refuse d'envoyer le SMS (${sms.status}) : ${sms.txt.slice(0, 200)}`); process.exit(1); }
-  console.log('📱 Peugeot vient de vous envoyer un SMS avec un code.');
-  const code = await ask('Code reçu par SMS : ');
-  const pin = await ask('Code PIN de l\'appli MyPeugeot (4 chiffres) : ', true);
-  const dev = (await token()).slice(0, 16);
-  const act = py({ cmd: 'activate', sms: code, pin, device_id: dev }).find((x) => 'ok' in x);
-  if (!act?.ok) { console.log('❌ Activation refusée : ' + (act?.error || '?') + '\nVérifiez le code SMS et le PIN, puis relancez.'); process.exit(1); }
-  writeJson('remote.json', { customerId, vin, mqtt: {} });
-  await mqttToken(true);
+  const prev = readJson('remote.json');
+  if (prev?.customerId && existsSync(join(DIR, 'otp.pickle'))) {
+    console.log('Activation déjà faite (pas besoin de nouveau SMS) : on reprend à l\'étape suivante.');
+  } else {
+    const assoc = await psa('/applications/cvs/v4/mauv/car-associations', { extra: { 'x-transaction-id': '1234' } });
+    const customerId = Array.isArray(assoc.j) && assoc.j[0]?.customer;
+    if (!customerId) { console.log('❌ Compte client introuvable (' + assoc.status + ').'); process.exit(1); }
+    const vin = (await vehicles()).find((v) => v.id === conf.vehicleId)?.vin;
+    if (!vin) { console.log('❌ Véhicule introuvable.'); process.exit(1); }
+    const sms = await psa('/applications/cvs/v4/mobile/smsCode', { method: 'POST' });
+    if (!sms.ok) { console.log(`❌ Peugeot refuse d'envoyer le SMS (${sms.status}) : ${sms.txt.slice(0, 200)}`); process.exit(1); }
+    console.log('📱 Peugeot vient de vous envoyer un SMS avec un code.');
+    const code = await ask('Code reçu par SMS : ');
+    const pin = await ask('Code PIN de l\'appli MyPeugeot (4 chiffres) : ', true);
+    const dev = (await token()).slice(0, 16);
+    const act = py({ cmd: 'activate', sms: code, pin, device_id: dev }).find((x) => 'ok' in x);
+    if (!act?.ok) { console.log('❌ Activation refusée : ' + (act?.error || '?') + '\nVérifiez le code SMS et le PIN, puis relancez.'); process.exit(1); }
+    writeJson('remote.json', { customerId, vin, mqtt: {} });
+  }
+  const { customerId, vin } = readJson('remote.json');
+  try { await mqttToken(true); } catch (e) { console.log('❌ ' + e.message + '\nCopiez ce message à Claude.'); process.exit(1); }
   const t = py({ cmd: 'send', token: readJson('remote.json').mqtt.access, customer_id: customerId, vin, wait: 30 });
   if (!t.some((x) => x.event === 'connected')) { console.log('❌ Connexion au serveur de commandes impossible : ' + JSON.stringify(t)); process.exit(1); }
   console.log('✅ Commandes à distance activées.');
