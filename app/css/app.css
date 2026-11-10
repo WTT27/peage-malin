@@ -15,7 +15,15 @@ html, body { margin: 0; background: var(--bg); color: var(--text);
 main { max-width: 720px; margin: 0 auto; padding: 12px 16px 40px; }
 .top { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px; background: var(--accent); color: var(--accent-text); }
+.top { flex-wrap: wrap; padding-bottom: 0; }
 .top h1 { font-size: 1.2rem; margin: 0; }
+.tabs { flex-basis: 100%; display: flex; gap: 4px; margin-top: 8px; }
+.tabs button { flex: 1; padding: 9px 6px; border: 0; border-radius: 10px 10px 0 0; background: transparent;
+  color: var(--accent-text); opacity: .75; font-size: .95rem; }
+.tabs button.on { background: var(--bg); color: var(--text); opacity: 1; font-weight: 600; }
+.tabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); vertical-align: middle; }
+.tabs .dot.juste { background: var(--best); } .tabs .dot.non { background: var(--bad); }
+.carmini { font-size: .85rem; color: var(--muted); margin: 0 0 8px; }
 .icon-btn { background: none; border: 0; color: inherit; font-size: 1.5rem; padding: 4px 8px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
 h2 { font-size: 1.05rem; margin: 0 0 10px; }
@@ -99,7 +107,7 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 .charge p { margin: 2px 0; }
 .charge .warn { color: var(--bad); }
 .evbox .field.inline input { width: 80px; flex: none; }
-.carlive { font-size: .88rem; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.carlive { font-size: .9rem; }
 .carlive p { margin: 2px 0; }
 .carlive .big { font-size: 1.05rem; }
 .carlive .old { color: var(--muted); }

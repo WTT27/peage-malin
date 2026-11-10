@@ -57,6 +57,12 @@ Saving split (tolls / fuel), tolls paid listed per option, saved places (chips),
    stations, 4 unlocated APRR/AREA barriers (Dordives, Cruseilles ×2, Copponex), Capbreton, Western Europe,
    yearly toll refresh (1 February), traffic at predicted time for later legs.
 
+## 7b. Two tabs (app v19, 2026-11-10)
+
+« 🗺️ Itinéraire » (saved trips, form, results) and « 🔋 Mon e-208 » (En route check, car status card #carLive, charge card).
+Last tab remembered (localStorage 'tab'); opens on the e-208 tab while a trip is followed; the tab shows a coloured dot
+(ok/juste/non) during a trip; the EV form keeps a one-line battery reminder (#carMini).
+
 ## 8. Charge stop at 6:00 — built 2026-11-10 (D-038), setup done the same day
 
 Setup done (OTP activation, MQTT token, cron 05:50). Lessons: pycryptodome 4.4 removed py3compat (stellotp/oaep.py
