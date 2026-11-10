@@ -57,7 +57,13 @@ Saving split (tolls / fuel), tolls paid listed per option, saved places (chips),
    stations, 4 unlocated APRR/AREA barriers (Dordives, Cruseilles ×2, Copponex), Capbreton, Western Europe,
    yearly toll refresh (1 February), traffic at predicted time for later legs.
 
-## 8. Charge stop at 6:00 — built 2026-11-10 (D-038), waiting for Thomas's setup
+## 8. Charge stop at 6:00 — built 2026-11-10 (D-038), setup done the same day
+
+Setup done (OTP activation, MQTT token, cron 05:50). Lessons: pycryptodome 4.4 removed py3compat (stellotp/oaep.py
+defines `bord`); the remote token request must not carry `&locale=` (HTTP 400). App v18 adds "Démarrer / Arrêter la
+charge" buttons: {type:'charge', action} on `<topic>-commande` → poll.mjs (≤ 2 min, requests > 10 min old dropped)
+spawns `charge.mjs start|stop --app` detached → result in charge.json `manual` (shown on the card) + ntfy alert.
+charge.lock (6 min) keeps commands from overlapping; the morning job waits for it. Real stop/start test still pending.
 
 Thomas must run in his own terminal: `node car/charge.mjs setup` (SMS + PIN), then next to the plugged car
 `node car/charge.mjs stop` / `start`. Log: ~/.config/peage-malin-car/charge.log. Claude may not run car/remote.py

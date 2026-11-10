@@ -179,18 +179,56 @@ if (cmd === 'check') {
   process.exit(0);
 }
 
+// one command at a time (the morning job, a test in the terminal and the app buttons could otherwise overlap)
+function lock() {
+  const l = readJson('charge.lock', null);
+  if (l && Date.now() - l.at < 6 * 60e3) return false;
+  writeJson('charge.lock', { at: Date.now(), cmd });
+  process.on('exit', () => writeJson('charge.lock', { at: 0 }));
+  return true;
+}
+
+// stop / start now: from the terminal, or from the app buttons ("--app": relayed by poll.mjs, result sent to the phone)
 if (cmd === 'stop' || cmd === 'start') {
-  const car = await carNow();
-  console.log(`Voiture : ${car.level} %, charge ${car.charging}, départ programmé ${hm(car.program)}. Envoi de la commande (jusqu'à 90 s)…`);
-  const r = await (cmd === 'stop' ? stopCharge(car) : startCharge(car));
-  console.log(r.ok ? '✅ Commande acceptée par la voiture.' : `❌ Pas de confirmation (codes ${r.codes.join(',') || 'aucun'}) ${r.reply ? JSON.stringify(r.reply) : ''}`);
+  const app = process.argv.includes('--app'), word = cmd === 'stop' ? 'Arrêt' : 'Démarrage';
+  const done = (ok, msg) => { const c = readJson('charge.json', {}); c.manual = { at: Date.now(), action: cmd, ok, msg }; writeJson('charge.json', c); };
+  if (!lock()) {
+    console.log('Une autre commande est déjà en cours : réessayez dans quelques minutes.');
+    if (app) { done(false, 'une autre commande était déjà en cours'); await alert(`⚠️ ${word} de la charge pas envoyé`, ['Une autre commande était déjà en cours : réessayez dans quelques minutes.'], 3); }
+    process.exit(1);
+  }
+  let car;
+  try { car = await carNow(); } catch (e) {
+    if (app) { done(false, 'voiture injoignable'); await alert(`⚠️ ${word} de la charge impossible`, ['Peugeot ne répond pas : ' + e.message], 4, ['warning']); }
+    throw e;
+  }
+  console.log(`Voiture : ${car.level} %, charge ${car.charging}, branchée ${car.plugged ? 'oui' : 'non'}, départ programmé ${hm(car.program)}. Envoi de la commande (jusqu'à 90 s)…`);
+  log(`manual ${cmd}${app ? ' (app)' : ''}: car ${car.level} %, ${car.charging}, plugged ${car.plugged}`);
+  if (app && !car.plugged) {
+    done(false, 'voiture pas branchée');
+    await alert(`🔌 ${word} de la charge : rien envoyé`, [`La voiture n'est pas branchée (${car.level} %).`], 3);
+    process.exit(1);
+  }
+  let r;
+  try { r = await (cmd === 'stop' ? stopCharge(car) : startCharge(car)); } catch (e) { r = { ok: false, codes: [], error: e.message }; }
+  console.log(r.ok ? '✅ Commande acceptée par la voiture.' : `❌ Pas de confirmation (codes ${r.codes.join(',') || 'aucun'}) ${r.error || (r.reply ? JSON.stringify(r.reply) : '')}`);
   await sleep(60e3);
-  const after = await carNow();
-  console.log(`1 min après : charge ${after.charging} (${after.level} %)`);
+  let after = null;
+  try { after = await carNow(); } catch { /* keep going */ }
+  const now = after ? `${after.charging === 'InProgress' ? 'en charge' : 'pas en charge'} (${after.level} %)` : 'état inconnu';
+  console.log(`1 min après : charge ${after?.charging ?? '?'} (${after?.level ?? '?'} %)`);
+  log(`manual ${cmd}: ${r.ok ? 'accepted' : 'no confirmation ' + (r.codes.join(',') || r.error || '')}, after: ${after?.charging}`);
+  const worked = cmd === 'stop' ? after?.charging !== 'InProgress' : after?.charging === 'InProgress';
+  if (app) {
+    done(r.ok && worked, now);
+    if (r.ok && worked) await alert(`✅ ${word} de la charge fait`, [`Voiture : ${now}.`], 3);
+    else await alert(`⚠️ ${word} de la charge pas confirmé`, [`Voiture : ${now}.`, r.ok ? 'La voiture a accepté la commande mais son état n\'a pas encore changé.' : 'La voiture n\'a pas confirmé la commande.'], 4, ['warning']);
+  }
   process.exit(r.ok ? 0 : 1);
 }
 
 if (cmd === 'morning') {
+  for (let i = 0; i < 6 && !lock(); i++) await sleep(60e3);       // wait for a command from the app to finish
   const date = parisDate(), color = await tempo(date);
   const st = readJson('state.json', {});
   const skip = st.chargeSkip === date;

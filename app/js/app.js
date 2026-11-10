@@ -147,6 +147,17 @@ function renderCharge() {
     const t = { 'arrêtée': `charge arrêtée à ${L.level} %`, 'laissée': `charge laissée en cours (${L.level} %)`, 'rien': 'pas de charge en cours à 5 h 50', 'échec': '⚠️ la charge n\'a pas pu être arrêtée' }[L.action];
     if (t) html += `<p class="old">Ce matin : ${t}.</p>`;
   }
+  // start / stop now: relayed by the home computer within ~2 min, result in the ntfy app
+  if (ch.active) {
+    let pend = null; try { pend = JSON.parse(localStorage.getItem('chargePending') || 'null'); } catch { /* ignore */ }
+    const P = pend && Date.now() - pend.at < 6 * 60e3 ? pend : null;
+    const M = ch.manual && Date.now() - ch.manual.at < 3 * 3600e3 && (!P || ch.manual.at > P.at) ? ch.manual : null;
+    const hhmm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    html += '<div class="nowbtns"><button type="button" data-a="start">▶️ Démarrer la charge</button><button type="button" data-a="stop">⏹️ Arrêter la charge</button></div>';
+    if (P && !M) html += `<p class="old">⏳ ${P.action === 'stop' ? 'Arrêt' : 'Démarrage'} demandé à ${hhmm(P.at)} : l'ordinateur l'envoie à la voiture (2 à 4 min), réponse en notification.</p>`;
+    else if (M) html += `<p class="old">${M.ok ? '✅' : '⚠️'} ${M.action === 'stop' ? 'Arrêt' : 'Démarrage'} de ${hhmm(M.at)} : ${M.ok ? 'fait' : 'pas confirmé'} — ${M.msg}.</p>`;
+    else if (car.plugged === false) html += '<p class="old">La voiture n\'est pas branchée (dernière info).</p>';
+  }
   box.className = `card chargecard${red ? ' red' : ''}`;
   box.innerHTML = html;
   const send = async (type) => {
@@ -161,6 +172,16 @@ function renderCharge() {
   const b1 = box.querySelector('[data-a=skip]'), b2 = box.querySelector('[data-a=unskip]');
   if (b1) b1.onclick = () => send('skip');
   if (b2) b2.onclick = () => send('unskip');
+  const now2 = async (action) => {
+    if (!confirm(action === 'stop' ? 'Arrêter la charge maintenant ?' : 'Démarrer la charge maintenant ?')) return;
+    try {
+      const r = await fetch(`https://ntfy.sh/${carTopic()}-commande`, { method: 'POST', body: JSON.stringify({ type: 'charge', action }) });
+      if (!r.ok) throw new Error();
+      try { localStorage.setItem('chargePending', JSON.stringify({ action, at: Date.now() })); } catch { /* ignore */ }
+      renderCharge();
+    } catch { alert('Pas de réseau : réessayez.'); }
+  };
+  for (const a of ['start', 'stop']) { const b = box.querySelector(`[data-a=${a}]`); if (b) b.onclick = () => now2(a); }
 }
 
 // ---------- "En route": battery vs the road still ahead while driving a planned trip (D-037) ----------

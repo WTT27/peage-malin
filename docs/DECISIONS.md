@@ -360,3 +360,6 @@ stop it. Wanted: stop at 6:00 every day unless asked otherwise (button), always 
   network only to otp.mpsa.com). Claude Code's safety check does not let Claude run that code: Thomas runs the setup and
   the first tests himself.
 - Test commands: `node car/charge.mjs check | stop | start`.
+
+Addition (2026-11-10, app v18): start / stop now buttons on the charge card, relayed by the home computer within
+~2 min (the phone cannot talk to the car itself without exposing the account); the answer comes as a notification.

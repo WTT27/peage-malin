@@ -3,8 +3,10 @@
 // Péage Malin reads on the phone. No position is ever stored or sent.
 //   node --experimental-websocket car/poll.mjs            (normal run)
 //   node --experimental-websocket car/poll.mjs --show     (print the summary, post nothing)
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { appendFileSync, readFileSync, writeFileSync, openSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { spawn } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mjs';
 import { evaluate } from '../app/js/enroute.js';
 
@@ -42,6 +44,13 @@ try {
     const x = JSON.parse(m.message);
     if (x.type === 'skip' && /^\d{4}-\d\d-\d\d$/.test(x.date)) { state.chargeSkip = x.date; log('charge stop skipped for', x.date); }
     if (x.type === 'unskip') { state.chargeSkip = null; log('charge stop skip cancelled'); }
+    // "start / stop the charge now" buttons: only recent requests (a request older than 10 min is dropped)
+    if (x.type === 'charge' && ['start', 'stop'].includes(x.action) && now - (m.time * 1000) < 10 * 60e3 && !SHOW) {
+      log('charge', x.action, 'asked from the app');
+      const out = openSync(join(DIR, 'charge.log'), 'a');
+      spawn(process.execPath, [...process.execArgv, join(dirname(fileURLToPath(import.meta.url)), 'charge.mjs'), x.action, '--app'],
+        { cwd: join(dirname(fileURLToPath(import.meta.url)), '..'), detached: true, stdio: ['ignore', out, out] }).unref();
+    }
   }
 } catch (e) { log('command channel error:', e.message); }
 // Tempo colours of today and tomorrow (1 blue, 2 white, 3 red), every hour (tomorrow's is published around 11:00)
@@ -171,7 +180,7 @@ const summary = cur && {
 
 if (summary) {
   const rem = readJson('remote.json'), ch = readJson('charge.json', {});
-  summary.charge = { active: !!rem, tempo: state.tempo || {}, skip: state.chargeSkip || null, last: ch.last || null };
+  summary.charge = { active: !!rem, tempo: state.tempo || {}, skip: state.chargeSkip || null, last: ch.last || null, manual: ch.manual || null };
 }
 
 // ---- "En route": battery vs the road still ahead, alerts on <channel>-alerte (ntfy app on the phone) ----
