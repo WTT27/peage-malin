@@ -77,6 +77,18 @@ function readEvBox() {
 }
 fillEvBox();
 
+// ---------- two tabs: route planner / my e-208 (remembered; opens on the e-208 while a trip is followed) ----------
+function showTab(name, first = false) {
+  for (const b of document.querySelectorAll('.tabs button')) { b.classList.toggle('on', b.dataset.tab === name); b.setAttribute('aria-selected', b.dataset.tab === name); }
+  $('tabRoute').classList.toggle('hidden', name !== 'route');
+  $('tabCar').classList.toggle('hidden', name !== 'car');
+  try { localStorage.setItem('tab', name); } catch { /* ignore */ }
+  if (first) return;
+  window.scrollTo({ top: 0 });
+  if (name === 'car' && carTopic()) fetchCar();
+}
+for (const b of document.querySelectorAll('.tabs button')) b.onclick = () => showTab(b.dataset.tab);
+
 // ---------- my e-208, read from the car (MyPeugeot → home computer → ntfy channel) ----------
 const carTopic = () => { try { return localStorage.getItem('carTopic') || ''; } catch { return ''; } };
 let car = (() => { try { return JSON.parse(localStorage.getItem('carLast') || 'null'); } catch { return null; } })(), startTouched = false;
@@ -91,8 +103,12 @@ function measured(c) {
   return { mwSummer: mw(st.ete_autoroute), mwWinter: mw(st.hiver_autoroute), otherSummer: ok(st.ete_autres), otherWinter: ok(st.hiver_autres) };
 }
 function renderCar() {
-  const box = $('carLive');
-  if (!car || !carTopic()) { box.classList.add('hidden'); return; }
+  const box = $('carLive'), mini = $('carMini');
+  if (!carTopic()) {
+    box.innerHTML = '<p>Pour suivre votre e-208 (batterie, conso réelle, arrêt de la charge), indiquez le canal de la voiture dans les Réglages ⚙︎.</p>';
+    mini.classList.add('hidden'); return;
+  }
+  if (!car) { box.innerHTML = '<p class="old">Pas encore de données de la voiture…</p>'; mini.classList.add('hidden'); return; }
   const carT = Date.parse(car.carAt) || car.at, fresh = Date.now() - carT < 12 * 3600e3;
   const ms = measured(car);
   const msTxt = [ms.mwWinter && `autoroute hiver ${dec(ms.mwWinter)}`, ms.mwSummer && `autoroute été ${dec(ms.mwSummer)}`,
@@ -105,7 +121,8 @@ function renderCar() {
     ${msTxt ? `<p>Conso mesurée sur vos trajets (kWh/100 km) : ${msTxt}</p>
       <label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}
     <p class="old">Lu sur la voiture ${ago(carT)}${fresh ? '' : ' — ancien, la voiture n\'a rien envoyé depuis'}</p>`;
-  box.classList.remove('hidden');
+  mini.textContent = `🔋 ${car.level ?? '?'} % lus sur la voiture ${ago(carT)} · reste ≈ ${car.remainingKm ?? '?'} km${fresh ? '' : ' (ancien)'}`;
+  mini.classList.remove('hidden');
   const cb = $('evMeasured');
   if (cb) cb.onchange = () => { V.ev.useMeasured = cb.checked; saveSettings(); };
   if (fresh && car.level != null && !startTouched) $('evStart').value = car.level;     // battery at departure = real level
@@ -214,7 +231,7 @@ async function startTrip(profile) {
   try { await postTrip({ type: 'start', trip }); trip.sent = true; } catch { trip.sent = false; }
   store('enroute', trip);
   renderEnroute();
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  showTab('car');
 }
 async function endTrip(silent) {
   const t = tripNow();
@@ -228,6 +245,8 @@ let enrouteTimer = null;
 function renderEnroute() {
   const box = $('enroute'), t = tripNow();
   clearInterval(enrouteTimer); enrouteTimer = null;
+  const dot = $('tabDot');
+  dot.className = 'dot hidden';
   if (!t || !car) { box.classList.add('hidden'); return; }
   // the home computer's check (uses every reading since departure); else the same check from the phone's last reading
   const home = car.enroute && car.enroute.id === t.id ? car.enroute : null;
@@ -237,6 +256,7 @@ function renderEnroute() {
   const before = carT < t.startAt - 60e3;
   const alertTopic = `${carTopic()}-alerte`;
   box.className = `card enroute ${res.level}`;
+  dot.className = `dot ${res.level}`;
   box.innerHTML = `<h2>${res.title}</h2>
     ${res.lines.map((l, i) => `<p class="${i ? '' : 'first'}">${escapeHtml(l)}</p>`).join('')}
     <p class="old">${escapeHtml(t.profile.label || '')} · lu sur la voiture ${ago(carT)}${before ? ' (avant le départ)' : ''}${stale ? ' — la voiture n\'envoie rien en roulant ? Le calcul reprendra à sa prochaine donnée.' : ''}${home ? '' : ' · calcul provisoire du téléphone'}</p>
@@ -653,3 +673,9 @@ renderChips();
 renderTrips();
 loadTolls().catch(() => showError('Impossible de charger les tarifs des péages'));
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// first tab: the e-208 while a trip is followed, else the last one used
+{
+  let t = 'route'; try { t = localStorage.getItem('tab') || 'route'; } catch { /* ignore */ }
+  showTab(tripNow() ? 'car' : t, true);
+}
