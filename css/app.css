@@ -124,6 +124,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 /* charge stop at 6:00 (D-038) */
 .chargecard p { margin: 4px 0; font-size: .92rem; }
 .chargecard .old { color: var(--muted); font-size: .82rem; }
+.chargecard .nowbtns { display: flex; gap: 8px; }
+.chargecard .nowbtns button { flex: 1; }
 .chargecard.red { border-left: 6px solid var(--bad); }
 .chargecard button { margin-top: 8px; width: 100%; padding: 9px; border-radius: 10px; border: 1px solid var(--line);
   background: var(--card); color: var(--text); font-size: .9rem; }
