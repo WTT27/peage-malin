@@ -31,6 +31,32 @@ try {
   }
 } catch (e) { log('trip channel error:', e.message); }
 if (trip?.active && now - trip.startAt > 36 * 3600e3) trip.active = false;      // forgotten trip
+
+// ---- 0b. charge stop at 6:00 (D-038): "don't stop tomorrow morning" from the phone, on <channel>-commande ----
+try {
+  const txt = await (await fetch(`https://ntfy.sh/${conf.topic}-commande/json?poll=1&since=${state.cmdMsg || '12h'}`)).text();
+  for (const l of txt.trim().split('\n').filter(Boolean)) {
+    const m = JSON.parse(l);
+    if (m.event !== 'message') continue;
+    state.cmdMsg = m.id;
+    const x = JSON.parse(m.message);
+    if (x.type === 'skip' && /^\d{4}-\d\d-\d\d$/.test(x.date)) { state.chargeSkip = x.date; log('charge stop skipped for', x.date); }
+    if (x.type === 'unskip') { state.chargeSkip = null; log('charge stop skip cancelled'); }
+  }
+} catch (e) { log('command channel error:', e.message); }
+// Tempo colours of today and tomorrow (1 blue, 2 white, 3 red), every hour (tomorrow's is published around 11:00)
+if (SHOW || now - (state.lastTempo || 0) > 3600e3) {
+  const day = (d) => d.toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  state.tempo = state.tempo || {};
+  for (const [w, d] of [['today', day(new Date(now))], ['tomorrow', day(new Date(now + 86400e3))]]) {
+    try {
+      const j = await (await fetch(`https://www.api-couleur-tempo.fr/api/jourTempo/${w}`, { signal: AbortSignal.timeout(15000) })).json();
+      if (j?.dateJour === d && j.codeJour) state.tempo[d] = j.codeJour;
+    } catch (e) { log('tempo error:', e.message); }
+  }
+  for (const k of Object.keys(state.tempo).sort().slice(0, -6)) delete state.tempo[k];
+  state.lastTempo = now;
+}
 const onTrip = !!trip?.active;
 
 // ---- 1. car status (every 2 min while something moves or a trip is followed, every 10 min when the car is idle) ----
@@ -142,6 +168,11 @@ const summary = cur && {
   exactKwh: false, odometer: cur.km, carRange: cur.autonomy, charging: cur.charging, plugged: cur.plugged,
   live, remainingKm, rateUsed: live?.kwh100 || avg || 16, avg, stats, trips: trips.length, calib,
 };
+
+if (summary) {
+  const rem = readJson('remote.json'), ch = readJson('charge.json', {});
+  summary.charge = { active: !!rem, tempo: state.tempo || {}, skip: state.chargeSkip || null, last: ch.last || null };
+}
 
 // ---- "En route": battery vs the road still ahead, alerts on <channel>-alerte (ntfy app on the phone) ----
 let er = null;

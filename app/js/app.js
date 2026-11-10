@@ -120,6 +120,47 @@ async function fetchCar() {
   } catch { /* offline: keep the last values */ }
   renderCar();
   renderEnroute();
+  renderCharge();
+}
+
+// ---------- charge stopped at 6:00 by the home computer (D-038): always on Tempo red days, else unless asked ----------
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+function renderCharge() {
+  const box = $('chargeCard'), ch = car?.charge;
+  if (!ch || !carTopic()) { box.classList.add('hidden'); return; }
+  const now = new Date(), mDate = new Date(now.getTime() + (now.getHours() >= 6 ? 86400e3 : 0)), md = isoDay(mDate);
+  const when = now.getHours() >= 6 ? 'Demain matin' : 'Ce matin';
+  const dayTxt = mDate.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' });
+  const code = ch.tempo?.[md] || 0, red = code === 3, colour = ['', 'Bleu', 'Blanc', 'ROUGE'][code] || '';
+  const season = [11, 12, 1, 2, 3].includes(mDate.getMonth() + 1);
+  const skip = ch.skip === md;
+  let html = '';
+  if (!ch.active) html = '<p>🔌 Arrêt de la charge à 6 h : pas encore activé sur l\'ordinateur.</p>';
+  else if (red) html = `<p>🔴 <b>${when} (${dayTxt}) jour ROUGE</b> : la charge sera arrêtée à 6 h (obligatoire).</p>`;
+  else if (skip) html = `<p>🔌 ${when} (${dayTxt}${colour ? `, jour ${colour}` : ''}) : <b>la charge continuera</b> (demandé).</p>
+    <button type="button" data-a="unskip">Annuler : arrêter la charge à 6 h</button>`;
+  else html = `<p>🔌 ${when} (${dayTxt}${colour ? `, jour ${colour}` : ''}) : la charge sera <b>arrêtée à 6 h</b>.</p>
+    ${!code && season ? '<p class="old">Couleur Tempo pas encore connue (publiée vers 11 h) : si le jour est rouge, l\'arrêt reste obligatoire.</p>' : ''}
+    <button type="button" data-a="skip">Ne pas arrêter la charge ${when.toLowerCase()}</button>`;
+  const L = ch.last;
+  if (L && L.date === isoDay(now)) {
+    const t = { 'arrêtée': `charge arrêtée à ${L.level} %`, 'laissée': `charge laissée en cours (${L.level} %)`, 'rien': 'pas de charge en cours à 5 h 50', 'échec': '⚠️ la charge n\'a pas pu être arrêtée' }[L.action];
+    if (t) html += `<p class="old">Ce matin : ${t}.</p>`;
+  }
+  box.className = `card chargecard${red ? ' red' : ''}`;
+  box.innerHTML = html;
+  const send = async (type) => {
+    try {
+      const r = await fetch(`https://ntfy.sh/${carTopic()}-commande`, { method: 'POST', body: JSON.stringify({ type, date: md }) });
+      if (!r.ok) throw new Error();
+      ch.skip = type === 'skip' ? md : null;
+      try { localStorage.setItem('carLast', JSON.stringify(car)); } catch { /* ignore */ }
+      renderCharge();
+    } catch { alert('Pas de réseau : réessayez.'); }
+  };
+  const b1 = box.querySelector('[data-a=skip]'), b2 = box.querySelector('[data-a=unskip]');
+  if (b1) b1.onclick = () => send('skip');
+  if (b2) b2.onclick = () => send('unskip');
 }
 
 // ---------- "En route": battery vs the road still ahead while driving a planned trip (D-037) ----------
@@ -192,7 +233,7 @@ function renderEnroute() {
   enrouteTimer = setInterval(() => { if (!document.hidden) fetchCar(); }, 60e3);
 }
 fetchCar();
-document.addEventListener('visibilitychange', () => { if (!document.hidden && (state.veh === 'ev' || tripNow())) fetchCar(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && carTopic()) fetchCar(); });
 $('evNoCharge').onchange = () => { $('evLunch').disabled = $('evNoCharge').checked; };
 
 // ---------- private storage on this phone (localStorage) ----------

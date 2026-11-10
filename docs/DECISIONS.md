@@ -342,3 +342,21 @@ with 200 km of motorway ahead.
 - Unknown until a real drive: whether the e-208 sends readings while moving or only when stopped.
 - Not handled: which side of the motorway a charger is on (the charger file's coordinates and names are not reliable
   enough).
+
+## D-038 — Charge stopped automatically at 6:00, always on Tempo red days (2026-11-10)
+Thomas: the MyPeugeot app programs the start of the charge (22:00) but not its end; on red days he gets up early to
+stop it. Wanted: stop at 6:00 every day unless asked otherwise (button), always on red days.
+- `car/charge.mjs` (cron 05:50): Tempo colour of the day (api-couleur-tempo.fr, free; cached hourly by poll.mjs); if the
+  car is charging (or, on a red day, plugged with an unclear status) → `/VehCharge {type: delayed, program: the car's
+  programmed hour}` = back to the programmed charge, so it restarts by itself at 22:00. Checked 45 s later, up to 3 tries,
+  result to the ntfy app; failure on a red day = urgent alert. Colour unknown from November to March (not Sunday) →
+  treated as red.
+- Skip: Péage Malin card "🔌" at the top → `<car channel>-commande` {type: skip|unskip, date of the morning}; poll.mjs
+  stores it (state.chargeSkip); ignored on red days. The card shows tomorrow's colour and this morning's result.
+- Remote commands like the MyPeugeot app: one-time OTP activation (SMS code + MyPeugeot PIN typed by Thomas:
+  `node car/charge.mjs setup`), then MQTT (mwa.mpsa.com:8885) with a token renewed by refresh token (3 days, renewed by
+  the daily job) or a new OTP code (Peugeot limit 6 a day; we stop at 5). `car/remote.py` in a private Python venv
+  (pycryptodome, paho-mqtt, requests); OTP code = reviewed copy of the community project's MIT module (`car/stellotp/`,
+  network only to otp.mpsa.com). Claude Code's safety check does not let Claude run that code: Thomas runs the setup and
+  the first tests himself.
+- Test commands: `node car/charge.mjs check | stop | start`.

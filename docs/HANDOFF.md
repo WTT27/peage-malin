@@ -57,6 +57,12 @@ Saving split (tolls / fuel), tolls paid listed per option, saved places (chips),
    stations, 4 unlocated APRR/AREA barriers (Dordives, Cruseilles ×2, Copponex), Capbreton, Western Europe,
    yearly toll refresh (1 February), traffic at predicted time for later legs.
 
+## 8. Charge stop at 6:00 — built 2026-11-10 (D-038), waiting for Thomas's setup
+
+Thomas must run in his own terminal: `node car/charge.mjs setup` (SMS + PIN), then next to the plugged car
+`node car/charge.mjs stop` / `start`. Log: ~/.config/peage-malin-car/charge.log. Claude may not run car/remote.py
+(auto-mode "code from external" block) — check the logs instead.
+
 ## 7. "En route" battery check — built 2026-11-10 (D-037)
 
 `app/js/enroute.js` + `car/poll.mjs`. Button "🔋 Suivre ma batterie" (e-208 options and saved trips, car linked).
