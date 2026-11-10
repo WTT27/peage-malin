@@ -2,7 +2,8 @@ import { loadTolls, tollData } from './tolls.js';
 import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName, refineVia, refineLegs } from './optimizer.js';
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
-import { mergeStops } from './charging.js';
+import { mergeStops, routeStations, evParams } from './charging.js';
+import { buildProfile, evaluate } from './enroute.js';
 
 const $ = (id) => document.getElementById(id);
 const state = { from: null, to: null, veh: 'diesel', result: null, selected: null };
@@ -118,9 +119,80 @@ async function fetchCar() {
     if (msgs.length) { const c = JSON.parse(msgs[msgs.length - 1].message); if (!car || c.at >= car.at) { car = c; try { localStorage.setItem('carLast', JSON.stringify(car)); } catch { /* ignore */ } } }
   } catch { /* offline: keep the last values */ }
   renderCar();
+  renderEnroute();
+}
+
+// ---------- "En route": battery vs the road still ahead while driving a planned trip (D-037) ----------
+// The trip (road profile: which km are motorway, planned charging stops, fast chargers along the way) is sent to the
+// home computer, which checks it at every car reading and sends alerts to the ntfy app; the phone shows the same check.
+const tripNow = () => load('enroute', null);
+async function postTrip(msg) {
+  const r = await fetch(`https://ntfy.sh/${carTopic()}-trajet`, { method: 'POST', body: JSON.stringify(msg) });
+  if (!r.ok) throw new Error('ntfy ' + r.status);
+}
+// profile of an option (the e-208 settings used for its calculation), small enough for one ntfy message (< 4 kB)
+function profileOf(e) {
+  const r = state.result, P = evParams(r.v, r.depart, e.sec);
+  const stations = routeStations(e.line, e.km, e.lineMw);
+  let prof = null;
+  for (const keep of [1, 2, 3, 4]) {
+    prof = buildProfile({ line: e.line, mw: e.lineMw, routeKm: e.km, plan: e.charge, stations: stations.filter((_, i) => i % keep === 0), P,
+      label: `${r.fromLabel} → ${r.toLabel}` });
+    if (JSON.stringify(prof).length < 3300) break;
+  }
+  return prof;
+}
+async function startTrip(profile) {
+  if (!carTopic()) { alert('Reliez d\'abord la voiture (Réglages ⚙︎).'); return; }
+  if (!car || car.odometer == null) { alert('Pas encore de données de la voiture : réessayez dans quelques minutes.'); return; }
+  const old = tripNow();
+  if (old && !confirm('Un suivi est déjà en cours. Le remplacer par ce trajet ?')) return;
+  const trip = { id: Date.now(), profile, startKm: car.odometer, startLevel: car.level, startAt: Date.now() };
+  store('enroute', trip);
+  try { await postTrip({ type: 'start', trip }); trip.sent = true; } catch { trip.sent = false; }
+  store('enroute', trip);
+  renderEnroute();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+async function endTrip(silent) {
+  const t = tripNow();
+  if (!t) return;
+  if (!silent && !confirm('Arrêter le suivi de la batterie ?')) return;
+  store('enroute', null);
+  try { await postTrip({ type: 'end', id: t.id }); } catch { /* the home computer stops by itself after 36 h */ }
+  renderEnroute();
+}
+let enrouteTimer = null;
+function renderEnroute() {
+  const box = $('enroute'), t = tripNow();
+  clearInterval(enrouteTimer); enrouteTimer = null;
+  if (!t || !car) { box.classList.add('hidden'); return; }
+  // the home computer's check (uses every reading since departure); else the same check from the phone's last reading
+  const home = car.enroute && car.enroute.id === t.id ? car.enroute : null;
+  const res = home || evaluate(t, [{ km: car.odometer, level: car.level, at: car.at }]);
+  if (!res) { box.classList.add('hidden'); return; }
+  const carT = Date.parse(car.carAt) || car.at, stale = Date.now() - carT > 20 * 60e3 && carT > t.startAt - 60e3;
+  const before = carT < t.startAt - 60e3;
+  const alertTopic = `${carTopic()}-alerte`;
+  box.className = `card enroute ${res.level}`;
+  box.innerHTML = `<h2>${res.title}</h2>
+    ${res.lines.map((l, i) => `<p class="${i ? '' : 'first'}">${escapeHtml(l)}</p>`).join('')}
+    <p class="old">${escapeHtml(t.profile.label || '')} · lu sur la voiture ${ago(carT)}${before ? ' (avant le départ)' : ''}${stale ? ' — la voiture n\'envoie rien en roulant ? Le calcul reprendra à sa prochaine donnée.' : ''}${home ? '' : ' · calcul provisoire du téléphone'}</p>
+    ${t.sent === false ? '<p class="old">⚠️ Trajet pas encore transmis à l\'ordinateur (pas de réseau ?) : nouvel essai à la prochaine actualisation.</p>' : ''}
+    ${load('ntfyOk', false) ? '' : `<div class="ntfy">📲 Pour être prévenu par-dessus Google Maps : installez l'appli gratuite <b>ntfy</b>, touchez « + » et abonnez-vous à <code>${alertTopic}</code> (serveur ntfy.sh par défaut).
+      <div class="actions"><button type="button" data-a="ntfyok">C'est fait</button></div></div>`}
+    <div class="actions"><button type="button" data-a="refresh">Actualiser</button><button type="button" data-a="end">Terminer le suivi</button></div>`;
+  box.classList.remove('hidden');
+  box.querySelector('[data-a=refresh]').onclick = () => fetchCar();
+  box.querySelector('[data-a=end]').onclick = () => endTrip(false);
+  const ok = box.querySelector('[data-a=ntfyok]');
+  if (ok) ok.onclick = () => { store('ntfyOk', true); renderEnroute(); };
+  if (t.sent === false) postTrip({ type: 'start', trip: t }).then(() => { t.sent = true; store('enroute', t); }).catch(() => {});
+  if (res.done && home) { endTrip(true); return; }
+  enrouteTimer = setInterval(() => { if (!document.hidden) fetchCar(); }, 60e3);
 }
 fetchCar();
-document.addEventListener('visibilitychange', () => { if (!document.hidden && state.veh === 'ev') fetchCar(); });
+document.addEventListener('visibilitychange', () => { if (!document.hidden && (state.veh === 'ev' || tripNow())) fetchCar(); });
 $('evNoCharge').onchange = () => { $('evLunch').disabled = $('evNoCharge').checked; };
 
 // ---------- private storage on this phone (localStorage) ----------
@@ -182,7 +254,7 @@ function saveTrip(e) {
   const name = (prompt('Nom de ce trajet :', def) || '').trim();
   if (!name) return;
   const trips = load('trips', []);
-  trips.push({ id: Date.now(), name, o: r.o, d: r.d, veh: r.vehKey, label: e.label, via: viaOf(e), legs: legsOf(r.o, r.d, e)?.map(({ line, ...L }) => L) || null, legName: e.split?.name, freeFirst: e.split?.freeFirst, savedAt: new Date().toISOString(), depart: r.departLabel,
+  trips.push({ id: Date.now(), name, o: r.o, d: r.d, veh: r.vehKey, label: e.label, via: viaOf(e), legs: legsOf(r.o, r.d, e)?.map(({ line, ...L }) => L) || null, legName: e.split?.name, freeFirst: e.split?.freeFirst, prof: r.v.type === 'ev' && e.line ? profileOf(e) : null, savedAt: new Date().toISOString(), depart: r.departLabel,
     saved: { min: e.min, km: e.km, toll: e.toll, energy: e.energy, cost: e.cost, dMin: e.dMin, save: e.save, saveToll: e.saveToll, saveEnergy: e.saveEnergy } });
   store('trips', trips);
   renderTrips();
@@ -204,6 +276,7 @@ function renderTrips() {
         <button type="button" class="primary-act" data-a="check">Vérifier</button>
         ${t.legs ? t.legs.map((L, i) => `<a target="_blank" rel="noopener" href="${googleMapsUrl(i ? null : L.from, L.to, L.via)}">${i ? '② Google Maps' : '① Google Maps'}</a>`).join('')
           : `<a target="_blank" rel="noopener" href="${googleMapsUrl(t.o, t.d, t.via || [])}">Google Maps</a>`}
+        ${t.prof && carTopic() ? '<button type="button" data-a="follow" class="follow">🔋 Suivre ma batterie</button>' : ''}
         <button type="button" data-a="rerun">Relancer l'analyse</button>
         <button type="button" data-a="del" class="del">Supprimer</button>
       </div>
@@ -222,6 +295,8 @@ function renderTrips() {
       } catch (e) { out.className = 'check bad'; out.textContent = e.message || String(e); }
       btn.disabled = false; btn.textContent = 'Vérifier';
     };
+    const fb = div.querySelector('[data-a=follow]');
+    if (fb) fb.onclick = () => startTrip({ ...t.prof, label: t.name.slice(0, 32) });
     div.querySelector('[data-a=rerun]').onclick = () => {
       state.from = t.o; state.to = t.d;
       $('from').value = t.name.split(' → ')[0] || 'Départ'; $('to').value = (t.name.split(' → ')[1] || 'Arrivée').replace(/\s*\(.*\)$/, '');
@@ -389,6 +464,7 @@ function routeCard(e, { compact = false } = {}) {
     <div class="hint2"></div>
     <div class="actions"><span class="gms"></span>
       <button type="button" class="fav">☆ Enregistrer</button>
+      ${state.result.v.type === 'ev' && e.line && carTopic() ? '<button type="button" class="follow">🔋 Suivre ma batterie</button>' : ''}
     </div>`;
   const showLinks = () => {
     const two = !!legsOf(o, d, e);
@@ -420,6 +496,8 @@ function routeCard(e, { compact = false } = {}) {
   };
   showLinks();
   div.querySelector('.fav').onclick = async () => { await prepare(); showLinks(); saveTrip(e); };
+  const fol = div.querySelector('.follow');
+  if (fol) fol.onclick = () => startTrip(profileOf(e));
   if (compact) div.querySelector('.label').style.fontWeight = '600';
   return div;
 }

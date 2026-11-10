@@ -6,6 +6,7 @@
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mjs';
+import { evaluate } from '../app/js/enroute.js';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -16,8 +17,24 @@ if (!conf?.vehicleId) { console.log('Lancer d\'abord : node car/setup.mjs'); pro
 const state = readJson('state.json', { lastCall: 0, lastChange: 0, lastPost: 0, lastTrips: 0, posted: null });
 const now = Date.now();
 
-// ---- 1. car status (every 2 min while something moves, every 10 min when the car is idle) ----
-const idle = now - state.lastChange > 30 * 60e3;
+// ---- 0. "En route" trip sent by the phone (D-037): {type:'start', trip} or {type:'end', id} on <channel>-trajet ----
+let trip = readJson('trip.json', null);
+try {
+  const txt = await (await fetch(`https://ntfy.sh/${conf.topic}-trajet/json?poll=1&since=${state.tripMsg || '12h'}`)).text();
+  for (const l of txt.trim().split('\n').filter(Boolean)) {
+    const m = JSON.parse(l);
+    if (m.event !== 'message') continue;
+    state.tripMsg = m.id;
+    const x = JSON.parse(m.message);
+    if (x.type === 'start' && x.trip?.profile) { trip = { ...x.trip, active: true }; state.alert = null; log('trip started', trip.id); }
+    if (x.type === 'end' && trip && trip.id === x.id) { trip.active = false; log('trip ended by the phone', trip.id); }
+  }
+} catch (e) { log('trip channel error:', e.message); }
+if (trip?.active && now - trip.startAt > 36 * 3600e3) trip.active = false;      // forgotten trip
+const onTrip = !!trip?.active;
+
+// ---- 1. car status (every 2 min while something moves or a trip is followed, every 10 min when the car is idle) ----
+const idle = now - state.lastChange > 30 * 60e3 && !onTrip;
 let cur = state.last || null;
 if (SHOW || !idle || now - state.lastCall > 10 * 60e3) {
   try {
@@ -125,6 +142,38 @@ const summary = cur && {
   exactKwh: false, odometer: cur.km, carRange: cur.autonomy, charging: cur.charging, plugged: cur.plugged,
   live, remainingKm, rateUsed: live?.kwh100 || avg || 16, avg, stats, trips: trips.length, calib,
 };
+
+// ---- "En route": battery vs the road still ahead, alerts on <channel>-alerte (ntfy app on the phone) ----
+let er = null;
+if (summary && onTrip) {
+  const pts = history.filter((p) => p.at >= trip.startAt - 60e3 && p.km != null && p.level != null);
+  if (!pts.length || pts[pts.length - 1].at !== cur.at) pts.push(cur);
+  er = evaluate(trip, pts);
+  if (er) summary.enroute = { id: trip.id, carAt: cur.carAt, ...er };
+}
+async function alert(title, lines, priority, tags) {
+  if (SHOW) { console.log('ALERT', priority, title, lines); return; }
+  try {
+    const r = await fetch('https://ntfy.sh/', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ topic: `${conf.topic}-alerte`, title, message: lines.join('\n'), priority, tags }) });
+    if (!r.ok) throw new Error('ntfy ' + r.status);
+  } catch (e) { log('alert error:', e.message); }
+}
+if (er && !SHOW) {
+  const a = state.alert || {};
+  const why = !a.id ? 'start' : a.level !== er.level || a.rec !== er.rec ? 'change' : !a.mw && er.mwMeasured ? 'mw'
+    : er.done ? 'done' : er.d - (a.d ?? 0) >= 1 && now - a.at > 30 * 60e3 ? 'periodic' : null;
+  if (why === 'done') {
+    await alert('🏁 Arrivé', [`Batterie ${cur.level} %. Suivi terminé.`], 2, ['checkered_flag']);
+    trip.active = false;
+  } else if (why) {
+    const head = why === 'start' ? 'Suivi batterie démarré — ' : why === 'mw' ? 'Conso autoroute mesurée — ' : '';
+    const prio = er.level === 'non' ? 5 : er.level === 'juste' ? 4 : why === 'change' || why === 'mw' ? 3 : 2;
+    await alert(head + er.title, er.lines, prio, [er.level === 'ok' ? 'battery' : er.level === 'juste' ? 'warning' : 'rotating_light']);
+  }
+  if (why) state.alert = { id: trip.id, level: er.level, rec: er.rec, mw: er.mwMeasured, d: er.d, at: now };
+}
+if (trip && !SHOW) writeJson('trip.json', trip);
 
 if (SHOW) { console.log(JSON.stringify(summary, null, 1)); writeJson('state.json', state); process.exit(0); }
 

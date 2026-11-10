@@ -315,3 +315,30 @@ MyPeugeot app, driving 10 km and reading again. He wants it automatic and offere
 - Results (`tests/google_follow.mjs`): diesel 113/116 followed (was 111), two links on 17 options (was every
   "then free roads" option), average 6.6 stops (was ~9), 20 options with ≤ 3 stops; e-208 30/31 (unchanged).
   Remaining: Clermont "Autre itinéraire (par N154, A10, A71)", two Toulouse options (2–4.50 € more).
+
+## D-037 — "En route": battery checked against the road ahead while driving (2026-11-10)
+Thomas: real-time remaining km on long motorway trips; never "plenty of margin" because the last km were country roads
+with 200 km of motorway ahead.
+- `app/js/enroute.js` (shared by the phone and `car/poll.mjs`). Button "🔋 Suivre ma batterie" on e-208 options and
+  saved trips sends a small trip profile (km ranges motorway / other roads, planned stops with planned arrival %, one
+  fast charger per 8 km with its km along the route, rates and reserve; no positions, < 4 kB) to the ntfy channel
+  `<car channel>-trajet`. Progress = odometer now − odometer at departure.
+- Consumption measured on the trip itself, per kind of road (each stretch between two car readings is split by the
+  planned route; last 60 km of each). Motorway figure used after 25 km of motorway, other roads after 15 km. Lower than
+  planned counts at most −10 %; higher counts in full and is also applied to the other kind of road while that one is
+  unmeasured. Country-road good news never lowers the motorway figure.
+- Verdict for the next planned charger (or the arrival): OK ≥ reserve + 5 % (or at least as good as the plan − 2 %),
+  "juste" above the reserve, "insuffisant" below → names the last charger reachable above the reserve (or a safer
+  earlier one when "juste"), slow-down hint (−10 % per 10 km/h, rough), "stop no longer needed" when ahead of plan,
+  range on the road ahead down to the reserve.
+- Home computer: reads the trip channel each run, calls the car every 2 min during a followed trip, adds the check to
+  the summary (the phone shows it; without it the phone computes a provisional one from the last reading) and sends
+  alerts to `<car channel>-alerte` (ntfy app on the phone, shown over Google Maps): start, verdict / advice change,
+  first motorway measurement, every 30 min while driving, arrival. Trip ends on arrival, "Terminer le suivi" or 36 h.
+- Charging planner: energy per km by road type (motorway / other rates, scaled to the route total) instead of an even
+  average, so plans and the en-route check agree; chargers matched to the road line between points, not only to the
+  points (a service area between two points 1–3 km apart was missed: Paris→Lyon "Évite le Duplex" found no plan,
+  182 km without a charger). Lyon e-208 test: 14/14 options with a plan (11 before), motorway plans 6–12 min shorter.
+- Unknown until a real drive: whether the e-208 sends readings while moving or only when stopped.
+- Not handled: which side of the motorway a charger is on (the charger file's coordinates and names are not reliable
+  enough).

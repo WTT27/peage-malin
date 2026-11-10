@@ -1,4 +1,4 @@
-# Handoff — restart point for the next conversation (2026-11-08, end of day)
+# Handoff — restart point for the next conversation (updated 2026-11-10)
 
 Read this first, then `docs/DECISIONS.md` (D-001…D-032) and `docs/PROGRESS.md`. Thomas does not read the docs:
 everything must be reported to him in the terminal, in plain words (he is not a coder).
@@ -56,6 +56,13 @@ Saving split (tolls / fuel), tolls paid listed per option, saved places (chips),
 5. Backlog: comfort penalty (postponed by Thomas), Escota/Arcos tolls, Duplex reverse direction, unnamed Vinci page-4
    stations, 4 unlocated APRR/AREA barriers (Dordives, Cruseilles ×2, Copponex), Capbreton, Western Europe,
    yearly toll refresh (1 February), traffic at predicted time for later legs.
+
+## 7. "En route" battery check — built 2026-11-10 (D-037)
+
+`app/js/enroute.js` + `car/poll.mjs`. Button "🔋 Suivre ma batterie" (e-208 options and saved trips, car linked).
+Alerts in the ntfy app, channel `<car channel>-alerte`. To check after Thomas's drive: does `history.jsonl` get readings
+while driving (several lines with increasing km during the trip) or only at the end? If only at the end, the check
+updates only at stops. Test files are in the session scratchpad (synthetic scenarios + Lyon options offline).
 
 ## 6. e-208 charging — DONE 2026-11-09 (D-033)
 
