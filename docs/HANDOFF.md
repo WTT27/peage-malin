@@ -8,7 +8,7 @@ everything must be reported to him in the terminal, in plain words (he is not a 
 - **Péage Malin**: phone-only web app (French UI), public repo `WTT27/peage-malin`, live at
   https://wtt27.github.io/peage-malin/ (GitHub Pages, `gh-pages` branch = `app/` folder).
 - Deploy: commit on `main`, `git push origin main` (HTTPS; the server's SSH key is someone else's), then
-  `git subtree split --prefix app -b gh-pages-build && git push -f origin gh-pages-build:gh-pages && git branch -D gh-pages-build`.
+  `./publish.sh` (subtree split of app/ pushed to gh-pages).
   Bump the cache name in `app/sw.js` (currently `peage-malin-v10`) at each release. No GitHub Actions (token lacks `workflow`).
 - TomTom key: only in `/home/thomas/projets/WTT/GPS/.env` (gitignored) and on Thomas's phone (localStorage, entered via
   `…/#key=…` once). Never commit or publish it. Free quota 2,500 requests/day; a full search uses 35–105.
