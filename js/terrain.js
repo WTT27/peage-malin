@@ -50,7 +50,8 @@ async function elevations(pts) {
 // mw: '0'/'1' per step, wp: wind sample points [[pos, lat, lon]] (≤ 10, rounded to 0.1°)}. null if offline.
 export async function buildTerrain(line, routeKm, lineMw) {
   try {
-    const step = routeKm > 400 ? 2 : 1;
+    // Open-Meteo counts each point as one request (free: 600 a minute, 10 000 a day): ≤ 180 points per route
+    const step = Math.max(1, Math.ceil(routeKm / 180));
     const pts = resample(line, routeKm, lineMw, step);
     const h = await elevations(pts);
     const hs = h.map((x, i) => [h[i - 1] ?? x, x, h[i + 1] ?? x].sort((a, b) => a - b)[1]);   // median of 3: bridges, cuttings
@@ -65,6 +66,15 @@ export async function buildTerrain(line, routeKm, lineMw) {
     for (let k = 0; k < n; k++) { const q = pts[Math.round(k * (pts.length - 1) / (n - 1))]; wp.push([Math.round(q.pos), r1(q.p[0]), r1(q.p[1])]); }
     return { step, total: +routeKm.toFixed(1), el: el.map((x) => +x.toFixed(3)), hd, mw: mw.join(''), wp };
   } catch { return null; }
+}
+
+// the terrain of a route used for another one between the same places (search: one route measured, the others
+// scaled to their length; motorway flags taken from that route)
+export function retarget(t, line, routeKm, lineMw) {
+  if (!t) return null;
+  const n = t.hd.length, step = routeKm / n, pts = resample(line, routeKm, lineMw, step);
+  const mw = Array.from({ length: n }, (_, i) => (pts[Math.min(pts.length - 1, i + 1)]?.mw ? '1' : '0')).join('');
+  return { ...t, step, total: +routeKm.toFixed(1), mw, wp: t.wp.map(([pos, la, lo]) => [Math.round(pos * routeKm / t.total), la, lo]), scaled: true };
 }
 
 // coarser copy for the trip profile sent to the home computer (message ≤ 4 kB)
