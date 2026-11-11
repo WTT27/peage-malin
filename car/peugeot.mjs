@@ -166,6 +166,7 @@ export function digest(s) {
     residualWh: bat.load?.residual ?? null, capacityWh: bat.load?.capacity ?? null,
     soh: bat.health?.capacity ?? null,
     charging: ch.status ?? null, plugged: ch.plugged ?? null,
+    chargeKmH: ch.chargingRate ?? null, chargeLeft: ch.remainingTime ?? null, chargeMode: ch.chargingMode ?? null,   // km/h, ISO duration, Slow/Quick
     moving: s.kinetic?.moving ?? null, ignition: s.ignition?.type ?? null,
   };
 }
