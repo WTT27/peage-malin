@@ -12,7 +12,7 @@ import { km, cumulative, routePoints } from './geo.js';
 import { priceRoute, priceSection, stationsNear, nearestLocal } from './tolls.js';
 import { route, localPoints } from './services.js';
 import { loadChargers, planCharging, quickCharge, evParams, mergeStops } from './charging.js';
-import { buildTerrain, fetchWinds, extraFn } from './terrain.js';
+import { buildTerrain, fetchWinds, extraFn, retarget } from './terrain.js';
 
 const TRANSITION_SEC = 60;   // leaving / joining the motorway
 const MAX_NODES = 12;        // interchanges kept per toll stretch
@@ -663,14 +663,21 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
     extra(w.r, rd.length ? `${w.label} (par ${rd.join(', ')})` : w.label, 'detour');
   }
 
-  // e-208: elevation and wind along each final route (free Open-Meteo; skipped when offline), D-041
+  // e-208: elevation and wind (free Open-Meteo, skipped when offline), D-041. Measured on the fastest route only, and
+  // scaled to the others (same places: similar climbs and wind); the followed route gets its own when "Suivre" is pressed
   if (v.type === 'ev' && !v.noCharge) {
-    onProgress(0.97, 'Relief et vent sur les itinéraires retenus…');
-    await Promise.all(finals.map(async (f) => {
-      if (!f.line) return;
-      f.terrain = await buildTerrain(f.line, f.km, f.lineMw);
-      f.winds = f.terrain ? await fetchWinds(f.terrain.wp, depart, f.km / Math.max(0.1, f.sec / 3600)) : [];
-    }));
+    const ref = finals.find((f) => f.isRef && f.line) || finals.find((f) => f.line);
+    if (ref) {
+      onProgress(0.97, 'Relief et vent…');
+      const T = await buildTerrain(ref.line, ref.km, ref.lineMw);
+      const W = T ? await fetchWinds(T.wp, depart, ref.km / Math.max(0.1, ref.sec / 3600)) : [];
+      for (const f of finals) {
+        if (!T || !f.line) continue;
+        f.terrain = f === ref ? T : retarget(T, f.line, f.km, f.lineMw);
+        f.winds = W.map(([pos, a, b]) => [Math.round(pos * f.km / ref.km), a, b]);
+        f.terrainOwn = f === ref;
+      }
+    }
   }
   for (const f of finals) applyCharging(f, v, depart);
   // near-identical routes (same time and cost): keep the first one found (corridor options before detours)

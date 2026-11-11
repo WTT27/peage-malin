@@ -33,7 +33,7 @@ for (const e of r.eff) {
     const c = e.charge;
     if (!c.ok) console.log('        ⚠️ pas de borne rapide atteignable trouvée');
     for (const s of c.stops) console.log(`        🔌 ${s.brand} ${s.name} ${s.kw} kW à ${Math.round(s.posKm)} km, ${Math.floor(s.eta)}h${String(Math.round(s.eta % 1 * 60)).padStart(2, '0')}, ${s.arrivePct}→${s.leavePct} %, ${s.kwh.toFixed(1)} kWh × ${s.price} = ${s.eur.toFixed(2)} €, ${s.min} min${s.lunch ? ' 🍽️' : ''}${s.off > 0.3 ? ` (à ${s.off.toFixed(1)} km de la route)` : ''}`);
-    if (c.ok) console.log(`        arrivée ${c.arrivePct} % · recharge comptée ${Math.round(e.chargeMin)} min${c.winter ? ' · hiver' : ''}`);
+    if (c.ok) console.log(`        arrivée ${c.arrivePct} % · recharge comptée ${Math.round(e.chargeMin)} min${c.winter ? " · hiver" : ""}${c.extraKwh != null ? ` · relief+vent ${c.extraKwh} kWh` : ""}`);
   }
 }
 const best = r.eff.find((e) => e.best);

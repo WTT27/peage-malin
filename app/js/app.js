@@ -4,7 +4,7 @@ import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 import { mergeStops, routeStations, evParams } from './charging.js';
 import { tripTemp, planRates, kwhAt } from './temp.js';
-import { fetchWinds } from './terrain.js';
+import { fetchWinds, buildTerrain } from './terrain.js';
 import { buildProfile, evaluate } from './enroute.js';
 
 const $ = (id) => document.getElementById(id);
@@ -218,6 +218,15 @@ const tripNow = () => load('enroute', null);
 async function postTrip(msg) {
   const r = await fetch(`https://ntfy.sh/${carTopic()}-trajet`, { method: 'POST', body: JSON.stringify(msg) });
   if (!r.ok) throw new Error('ntfy ' + r.status);
+}
+// the option's own elevation (the search measured only the fastest route), before following or saving it
+async function ownTerrain(e) {
+  if (e.terrainOwn || !e.line || state.result?.v?.type !== 'ev') return;
+  const t = await buildTerrain(e.line, e.km, e.lineMw);
+  if (!t) return;
+  e.terrain = t; e.terrainOwn = true;
+  const w = await fetchWinds(t.wp, state.result.depart, e.km / Math.max(0.1, e.sec / 3600));
+  if (w.length) e.winds = w;
 }
 // profile of an option (the e-208 settings used for its calculation), small enough for one ntfy message (< 4 kB)
 function profileOf(e) {
@@ -590,9 +599,9 @@ function routeCard(e, { compact = false } = {}) {
     } catch { /* keep the stops */ }
   };
   showLinks();
-  div.querySelector('.fav').onclick = async () => { await prepare(); showLinks(); saveTrip(e); };
+  div.querySelector('.fav').onclick = async () => { await prepare(); showLinks(); await ownTerrain(e); saveTrip(e); };
   const fol = div.querySelector('.follow');
-  if (fol) fol.onclick = () => startTrip(profileOf(e));
+  if (fol) fol.onclick = async () => { fol.disabled = true; await ownTerrain(e); fol.disabled = false; startTrip(profileOf(e)); };
   if (compact) div.querySelector('.label').style.fontWeight = '600';
   return div;
 }

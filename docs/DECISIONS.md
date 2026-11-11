@@ -398,3 +398,7 @@ live check and the end-of-trip measurement remove elevation/wind from the batter
 the temperature law of D-040) is the flat, calm-air figure. Why: the 2026-11-11 round trip (same road, 14 °C) gave
 18.2 one way and 21.9 back; replayed with straight-line elevation + archived wind: predicted 32 % vs real 31 % on the
 way back (36 % before), corrected consumption 18.8 / 19.4.
+
+Addition (same day): Open-Meteo counts each elevation point as one request (free: 600/min, 10 000/day). So a search
+measures the fastest route only (≤ 180 points) and scales it to the other options (retarget); the option followed or
+saved gets its own elevation (ownTerrain) at that moment.
