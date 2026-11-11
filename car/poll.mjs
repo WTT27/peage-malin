@@ -220,8 +220,9 @@ if (er && !SHOW) {
     const tt = tripTotals(trip, history.filter((p) => p.at >= trip.startAt - 60e3 && p.km != null && p.level != null).concat(cur));
     const kw = (x) => String(x).replace('.', ',');
     await alert('🏁 Arrivé', [`Batterie ${cur.level} %. Suivi terminé.`,
-      tt.mwKwh100 != null ? `Conso réelle sur autoroute : ${kw(tt.mwKwh100)} kWh/100 km (${tt.mwKm} km).` : '',
-      tt.otherKwh100 != null ? `Autres routes : ${kw(tt.otherKwh100)} kWh/100 km (${tt.otherKm} km).` : ''].filter(Boolean), 2, ['checkered_flag']);
+      // below 25 km the battery's 1 % steps make the figure meaningless: not shown (still kept, averaged with other trips)
+      tt.mwKwh100 != null && tt.mwKm >= 25 ? `Conso réelle sur autoroute : ${kw(tt.mwKwh100)} kWh/100 km (${tt.mwKm} km).` : '',
+      tt.otherKwh100 != null && tt.otherKm >= 25 ? `Autres routes : ${kw(tt.otherKwh100)} kWh/100 km (${tt.otherKm} km).` : ''].filter(Boolean), 2, ['checkered_flag']);
   } else if (why) {
     const head = why === 'start' ? 'Suivi batterie démarré — ' : why === 'mw' ? 'Conso autoroute mesurée — ' : '';
     const prio = er.level === 'non' ? 5 : er.level === 'juste' ? 4 : why === 'change' || why === 'mw' ? 3 : 2;
