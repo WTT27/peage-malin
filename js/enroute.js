@@ -76,7 +76,7 @@ function reach(p, a, e, rM, rO) {
 // pts: car readings since departure [{km (odometer), level (%), at}], oldest first. Each stretch between two readings
 // (no charge in between) is shared between motorway and other roads by the planned route; the most recent WINDOW_KM
 // of each are kept.
-function measure(p, startKm, pts) {
+function measure(p, startKm, pts, windowKm = WINDOW_KM) {
   const out = { mw: { km: 0, kwh: 0 }, other: { km: 0, kwh: 0 } };
   for (let i = pts.length - 1; i > 0; i--) {
     const a = pts[i - 1], b = pts[i];
@@ -86,11 +86,17 @@ function measure(p, startKm, pts) {
     const kwh = (a.level - b.level) / 100 * p.batt;
     const m = mwKm(p, Math.max(0, da), Math.min(p.total, db)), o = Math.max(0, len - m);
     const eM = m * p.kM, eO = o * p.kO, tot = eM + eO || 1;    // energy shared out as the plan expects it
-    if (out.mw.km < WINDOW_KM && m > 0) { out.mw.km += m; out.mw.kwh += kwh * eM / tot; }
-    if (out.other.km < WINDOW_KM && o > 0) { out.other.km += o; out.other.kwh += kwh * eO / tot; }
-    if (out.mw.km >= WINDOW_KM && out.other.km >= WINDOW_KM) break;
+    if (out.mw.km < windowKm && m > 0) { out.mw.km += m; out.mw.kwh += kwh * eM / tot; }
+    if (out.other.km < windowKm && o > 0) { out.other.km += o; out.other.kwh += kwh * eO / tot; }
+    if (out.mw.km >= windowKm && out.other.km >= windowKm) break;
   }
   return out;
+}
+// whole trip, at the end: real consumption on motorway and on other roads (from battery % drops), kept for future plans
+export function tripTotals(trip, pts) {
+  const m = measure(trip.profile, trip.startKm, pts, Infinity);
+  const r = (g) => (g.km >= 5 ? +(g.kwh / g.km * 100).toFixed(1) : null);
+  return { mwKm: Math.round(m.mw.km), mwKwh100: r(m.mw), otherKm: Math.round(m.other.km), otherKwh100: r(m.other) };
 }
 // rates used for the road ahead: measured on the same kind of road when enough km were driven; a measured figure lower
 // than planned counts at most −10 % (a 1 % battery step is ~0.5 kWh); higher than planned counts in full, and is also

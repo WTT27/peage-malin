@@ -100,7 +100,10 @@ function measured(c) {
   const st = c?.stats || {}, ok = (g) => (g && g.km >= 150 ? g.kwh100 : null);
   // motorway figures replace the settings only once Peugeot's trip energy is calibrated on real battery drops
   const real = c?.calib?.source === 'mesure', mw = (g) => (real ? ok(g) : null);
-  return { mwSummer: mw(st.ete_autoroute), mwWinter: mw(st.hiver_autoroute), otherSummer: ok(st.ete_autres), otherWinter: ok(st.hiver_autres) };
+  // followed trips (battery % drops on known motorway km) are the best source once 100 km are measured (D-039)
+  const rd = c?.roads || {}, fr = (g) => (g && g.km >= 100 ? g.kwh100 : null);
+  return { mwSummer: fr(rd.ete_autoroute) ?? mw(st.ete_autoroute), mwWinter: fr(rd.hiver_autoroute) ?? mw(st.hiver_autoroute),
+    otherSummer: fr(rd.ete_autres) ?? ok(st.ete_autres), otherWinter: fr(rd.hiver_autres) ?? ok(st.hiver_autres) };
 }
 function renderCar() {
   const box = $('carLive'), mini = $('carMini');
