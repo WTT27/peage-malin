@@ -682,26 +682,36 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
   for (const f of finals) applyCharging(f, v, depart);
   // near-identical routes (same time and cost): keep the first one found (corridor options before detours)
   for (let i = finals.length - 1; i > 0; i--) if (finals.slice(0, i).some((f) => Math.abs(f.min - finals[i].min) < 0.6 && Math.abs(f.cost - finals[i].cost) < 0.25)) finals.splice(i, 1);
-  let eff = frontier(finals.filter((c) => c === refC || c.cost < refC.cost - 0.05), 'min', 'cost');
-  if (!eff.includes(refC)) eff = [refC, ...eff].sort((a, b) => a.min - b.min);
+  // e-208: once charging is counted, another option can beat the all-motorway route (chargers badly placed on the
+  // motorway): the truly fastest becomes the reference for times and savings; the motorway route then stays only if it
+  // is cheaper than that one (2026-11-11, Demangevelle: motorway 6 h 42 with 3 stops, A105 option 6 h 35 with 2)
+  let base = refC;
+  if (v.type === 'ev') {
+    const fast = finals.reduce((a, b) => (b.min < a.min - 0.5 || (Math.abs(b.min - a.min) <= 0.5 && b.cost < a.cost) ? b : a));
+    if (fast !== refC && fast.min < refC.min - 1) base = fast;
+  }
+  for (const f of finals) f.isBase = f === base;
+  let eff = frontier(finals.filter((c) => c === base || c.cost < base.cost - 0.05), 'min', 'cost');
+  if (!eff.includes(base)) eff = [base, ...eff].sort((a, b) => a.min - b.min);
   // Thomas's rule: options within 2 minutes of each other → keep only the cheapest (the fastest route is always kept)
-  eff = eff.filter((e) => e === refC || !eff.some((f) => f !== e && f.min >= e.min - 1e-6 && f.min - e.min <= 2 && f.cost < e.cost - 0.01));
-  eff = eff.filter((e) => e === refC || !eff.some((f) => f !== e && f !== refC && f.min < e.min && e.min - f.min <= 2 && f.cost < e.cost - 0.01));
+  eff = eff.filter((e) => e === base || !eff.some((f) => f !== e && f.min >= e.min - 1e-6 && f.min - e.min <= 2 && f.cost < e.cost - 0.01));
+  eff = eff.filter((e) => e === base || !eff.some((f) => f !== e && f !== base && f.min < e.min && e.min - f.min <= 2 && f.cost < e.cost - 0.01));
   // Thomas: hide options that save almost nothing more than the previous one shown: walking from the fastest to the
   // slowest, an option must save at least 1 € more AND at least 1 € per 10 extra minutes than the last one kept.
   {
     const kept = [];
     for (const e of [...eff].sort((a, b) => a.min - b.min)) {
       const prev = kept[kept.length - 1];
-      if (!prev || e === refC) { kept.push(e); continue; }
+      if (!prev || e === base) { kept.push(e); continue; }
       const dS = prev.cost - e.cost, dT = e.min - prev.min;
       if (dS >= Math.max(1, dT / 10)) kept.push(e);
     }
     eff = kept;
   }
-  rate(eff, refC);
+  rate(eff, base);
   onProgress(1, 'Terminé');
-  return { eff, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, fastest };
+  const motorway = base !== refC ? { min: refC.min, cost: refC.cost, stops: refC.charge?.ok ? refC.charge.stops.length : null, shown: eff.includes(refC) } : null;
+  return { eff, count: list.length + 1, confirmed: [...real.values()].filter(Boolean).length, fastest, motorway };
 }
 
 // best compromise, free wins
