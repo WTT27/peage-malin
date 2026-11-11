@@ -12,6 +12,7 @@ import { km, cumulative, routePoints } from './geo.js';
 import { priceRoute, priceSection, stationsNear, nearestLocal } from './tolls.js';
 import { route, localPoints } from './services.js';
 import { loadChargers, planCharging, quickCharge, evParams, mergeStops } from './charging.js';
+import { buildTerrain, fetchWinds, extraFn } from './terrain.js';
 
 const TRANSITION_SEC = 60;   // leaving / joining the motorway
 const MAX_NODES = 12;        // interchanges kept per toll stretch
@@ -41,7 +42,8 @@ export function energy(c, v) {
 // real charging stops at real chargers (finals only: needs the route's line)
 function applyCharging(f, v, depart) {
   if (v.type !== 'ev' || !f.line) return;
-  const plan = planCharging(f.line, f, v, depart, f.lineMw);
+  const X = f.terrain ? extraFn(f.terrain, f.winds, v.maxSpeed || 110) : null;
+  const plan = planCharging(f.line, f, v, depart, f.lineMw, X);
   if (!plan) return;
   if (plan.ok) { f.energy = plan.energy; f.chargeMin = plan.chargeMin; }
   else f.chargeMin += 20;                         // no reachable fast charger found near this route: penalty, warned in the app
@@ -661,6 +663,15 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
     extra(w.r, rd.length ? `${w.label} (par ${rd.join(', ')})` : w.label, 'detour');
   }
 
+  // e-208: elevation and wind along each final route (free Open-Meteo; skipped when offline), D-041
+  if (v.type === 'ev' && !v.noCharge) {
+    onProgress(0.97, 'Relief et vent sur les itinéraires retenus…');
+    await Promise.all(finals.map(async (f) => {
+      if (!f.line) return;
+      f.terrain = await buildTerrain(f.line, f.km, f.lineMw);
+      f.winds = f.terrain ? await fetchWinds(f.terrain.wp, depart, f.km / Math.max(0.1, f.sec / 3600)) : [];
+    }));
+  }
   for (const f of finals) applyCharging(f, v, depart);
   // near-identical routes (same time and cost): keep the first one found (corridor options before detours)
   for (let i = finals.length - 1; i > 0; i--) if (finals.slice(0, i).some((f) => Math.abs(f.min - finals[i].min) < 0.6 && Math.abs(f.cost - finals[i].cost) < 0.25)) finals.splice(i, 1);
