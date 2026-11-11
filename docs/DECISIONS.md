@@ -411,3 +411,13 @@ than that one; the summary explains when it is slower ("les bornes y sont moins 
 Demangevelle 12 Nov 7:18, motorway 6 h 42 with 3 stops (only service-area chargers count on the motorway) while the
 A105 option took 6 h 35 with 2, and was shown as "−7 min" against "Le plus rapide". Flag: isBase (isRef keeps
 meaning "the TomTom fastest route", used for the Google Maps links).
+
+## D-043 — e-208 departure battery and charging above 80 % (2026-11-11)
+
+Thomas: home → Demangevelle all motorway in winter is done with 2 stops (he once did it with one long stop). Causes:
+the planner started at 90 % (old "aged battery" default) and the form filled in the car's current level (31 %, plugged
+in) even for a departure the next morning, and that value was saved as the default. Now: a setting "Batterie au départ
+quand la voiture a chargé" (usualPct, default 100); the form value is for one search only; prefill = the car's level for
+a departure within the hour, the usual level if the car is plugged in or the departure is > 12 h away, else the car's
+level (the line above the field says which). The charging plan also tries, at each charger, charging above 80–85 % (up to
+100 %, slow) and keeps it when the whole plan is better. Result for 12 Nov 7:18 at 100 %: all motorway, 2 stops, 6 h 13.

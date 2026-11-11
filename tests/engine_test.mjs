@@ -36,5 +36,6 @@ for (const e of r.eff) {
     if (c.ok) console.log(`        arrivée ${c.arrivePct} % · recharge comptée ${Math.round(e.chargeMin)} min${c.winter ? " · hiver" : ""}${c.extraKwh != null ? ` · relief+vent ${c.extraKwh} kWh` : ""}`);
   }
 }
+if (r.motorway) console.log('  tout-autoroute :', JSON.stringify(r.motorway));
 const best = r.eff.find((e) => e.best);
 if (best) console.log('  GoogleMaps:', googleMapsUrl(o, D[dest], best.via));

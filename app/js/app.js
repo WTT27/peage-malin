@@ -19,6 +19,7 @@ function loadSettings() {
     if (ev.homeEurKwh === 0.14) ev.homeEurKwh = DEFAULT_VEHICLES.ev.homeEurKwh;
     delete ev.chargeKw; ev.model2 = true;
   }
+  if (ev.usualPct == null) ev.usualPct = 100;  // usual departure battery once charged (Thomas leaves at 100 %, 2026-11-11)
   return { diesel: { ...DEFAULT_VEHICLES.diesel, ...(s.diesel || {}) }, ev };
 }
 let V = loadSettings();
@@ -37,6 +38,7 @@ $('btnSettings').onclick = () => {
   $('sLper100').value = V.diesel.lPer100; $('sDiesel').value = (Math.round(V.diesel.eurPerL * 100) / 100).toFixed(2);
   $('sKwhM').value = V.ev.kwhMotorway; $('sKwhMW').value = V.ev.kwhMotorwayWinter; $('sLunch').value = V.ev.lunchMin;
   $('sReserve').value = V.ev.reservePct; $('sKwhO').value = V.ev.kwhOther; $('sBatt').value = V.ev.batteryKwh;
+  $('sUsual').value = V.ev.usualPct;
   $('sHome').value = V.ev.homeEurKwh; $('sFast').value = V.ev.fastEurKwh;
   $('sCar').value = carTopic();
   renderPlaceList();
@@ -59,6 +61,7 @@ $('settings').addEventListener('close', () => {
   V.ev.kwhMotorway = num('sKwhM', V.ev.kwhMotorway); V.ev.kwhOther = num('sKwhO', V.ev.kwhOther);
   V.ev.kwhMotorwayWinter = num('sKwhMW', V.ev.kwhMotorwayWinter); V.ev.lunchMin = num('sLunch', V.ev.lunchMin);
   V.ev.reservePct = num('sReserve', V.ev.reservePct);
+  V.ev.usualPct = Math.min(100, Math.max(20, num('sUsual', V.ev.usualPct)));
   try { localStorage.removeItem('engineMode'); } catch { /* ignore */ }
   V.ev.batteryKwh = num('sBatt', V.ev.batteryKwh); V.ev.homeEurKwh = num('sHome', V.ev.homeEurKwh); V.ev.fastEurKwh = num('sFast', V.ev.fastEurKwh);
   saveSettings();
@@ -66,13 +69,13 @@ $('settings').addEventListener('close', () => {
 
 // ---------- e-208 options on the main form (remembered on the phone) ----------
 function fillEvBox() {
-  $('evStart').value = V.ev.startPct; $('evArrive').value = V.ev.arrivePct ?? '';
+  $('evStart').value = V.ev.usualPct; $('evArrive').value = V.ev.arrivePct ?? '';
   $('evLunch').checked = !!V.ev.lunch; $('evNoCharge').checked = !!V.ev.noCharge;
   $('evLunch').disabled = $('evNoCharge').checked;
 }
 function readEvBox() {
   const st = parseFloat($('evStart').value), ar = parseFloat($('evArrive').value);
-  V.ev.startPct = Number.isFinite(st) ? Math.min(100, Math.max(5, st)) : 90;
+  V.ev.startPct = Number.isFinite(st) ? Math.min(100, Math.max(1, st)) : V.ev.usualPct;    // this search only
   V.ev.arrivePct = Number.isFinite(ar) && ar > 0 ? Math.min(90, ar) : null;
   V.ev.lunch = $('evLunch').checked; V.ev.noCharge = $('evNoCharge').checked;
   saveSettings();
@@ -120,11 +123,20 @@ function renderCar() {
     ${law ? `<h3>Conso selon la température (kWh/100 km)</h3>${law}
       <label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}
     <p class="old">Lu sur la voiture ${ago(carT)}${fresh ? '' : ' — ancien, la voiture n\'a rien envoyé depuis'}</p>`;
-  mini.textContent = `🔋 ${car.level ?? '?'} % lus sur la voiture ${ago(carT)} · reste ≈ ${car.remainingKm ?? '?'} km${fresh ? '' : ' (ancien)'}`;
-  mini.classList.remove('hidden');
   const cb = $('evMeasured');
   if (cb) cb.onchange = () => { V.ev.useMeasured = cb.checked; saveSettings(); };
-  if (fresh && car.level != null && !startTouched) $('evStart').value = car.level;     // battery at departure = real level
+  // battery at departure: the real level for a departure within the hour; later, the usual level once charged if the
+  // car is plugged in (or the departure is more than 12 h away), else the real level
+  let src = '';
+  if (car.level != null && !startTouched) {
+    const dep = $('when').value ? new Date($('when').value) : new Date(), ahead = dep - Date.now();
+    const usual = V.ev.usualPct ?? 100;
+    if (fresh && ahead <= 3600e3) { $('evStart').value = car.level; src = 'lu sur la voiture'; }
+    else if (car.plugged || ahead > 12 * 3600e3) { $('evStart').value = Math.max(fresh ? car.level : 0, usual); src = car.plugged ? 'voiture branchée : chargée d\'ici le départ' : 'batterie habituelle au départ'; }
+    else if (fresh) { $('evStart').value = car.level; src = 'lu sur la voiture, pas branchée'; }
+  }
+  mini.textContent = `🔋 ${car.level ?? '?'} % lus sur la voiture ${ago(carT)}${car.plugged ? ' (branchée)' : ''}${src ? ` · départ compté à ${$('evStart').value} % (${src})` : ''}`;
+  mini.classList.remove('hidden');
 }
 async function fetchCar() {
   const t = carTopic();
@@ -425,7 +437,8 @@ function setNow() {
   $('when').value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 setNow();
-$('btnNow').onclick = setNow;
+$('btnNow').onclick = () => { setNow(); renderCar(); };
+$('when').addEventListener('change', () => renderCar());     // departure later → expected battery (car plugged in)
 
 document.querySelectorAll('#vehSeg button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('#vehSeg button').forEach((x) => x.classList.toggle('on', x === b));
@@ -538,7 +551,7 @@ function gmLinks(o, d, e) {
     text: i ? `② De ${nm} à l'arrivée` : `① Jusqu'à ${nm}` }));
 }
 const legsHint = (nm, freeFirst) => `<div class="split legs">👉 Pour ce trajet, Google Maps ne suit pas l'itinéraire en un seul lien : il s'ouvre en 2 parties. Partie ${freeFirst ? '①' : '②'} (routes gratuites) : activez « Éviter les péages » (Options). Ouvrez la partie ② en arrivant à ${escapeHtml(nm)}.</div>`;
-const hhmm = (h) => `${Math.floor(h) % 24} h ${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
+const hhmm = (h) => { const m = Math.round(h * 60); return `${Math.floor(m / 60) % 24} h ${String(m % 60).padStart(2, '0')}`; };
 function chargeHtml(e) {
   const c = e.charge;
   if (!c) return '';

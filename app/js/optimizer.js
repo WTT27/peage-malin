@@ -27,7 +27,7 @@ export const DEFAULT_VEHICLES = {
   // e-208 (Thomas, D-033): 15 kWh/100 km mixed roads, 18 on the motorway at 110 in summer, 20 in winter (Nov–Mar);
   // home = average of Tempo blue/white off-peak (Aug 2026 grid: 0.1356 / 0.1536); leaves at 90 % (aged battery)
   ev: { label: 'e-208', type: 'ev', kwhMotorway: 18, kwhMotorwayWinter: 20, kwhOther: 15, batteryKwh: 46, homeEurKwh: 0.145,
-    fastEurKwh: 0.54, stopOverheadMin: 10, maxSpeed: 110, startPct: 90, arrivePct: null, reservePct: 8,
+    fastEurKwh: 0.54, stopOverheadMin: 10, maxSpeed: 110, startPct: 100, usualPct: 100, arrivePct: null, reservePct: 8,
     lunch: false, lunchMin: 45, noCharge: false, season: 'auto' },
 };
 
@@ -691,6 +691,7 @@ export async function analyse(o, d, v, depart, onProgress = () => {}) {
     if (fast !== refC && fast.min < refC.min - 1) base = fast;
   }
   for (const f of finals) f.isBase = f === base;
+
   let eff = frontier(finals.filter((c) => c === base || c.cost < base.cost - 0.05), 'min', 'cost');
   if (!eff.includes(base)) eff = [base, ...eff].sort((a, b) => a.min - b.min);
   // Thomas's rule: options within 2 minutes of each other → keep only the cheapest (the fastest route is always kept)

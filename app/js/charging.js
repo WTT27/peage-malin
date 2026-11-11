@@ -138,12 +138,13 @@ export function planCharging(line, c, v, depart, lineMw = null, X = null) {
   let cands = null;
 
   // one stop at station s, arriving with the state {soc, pos, clock, lunchDone}
-  function stopAt(s, st) {
+  // high: charge above 80–85 % (slow, but can save a whole stop: Thomas did home → Demangevelle with one long stop)
+  function stopAt(s, st, high = false) {
     const arrive = st.soc - E(st.pos, s.pos) - s.d * 2 * offRate;
     const eta = t0 + (st.clock + (s.pos - st.pos) * spk) / 3600;
     const atLunch = !st.lunchDone && eta >= 11.75 && eta <= 13.75;
     const needRest = E(s.pos, L) + P.target * B + 0.02 * B + s.d * 2 * offRate;   // small margin
-    const cap = (atLunch ? 0.9 : needRest <= 0.85 * B ? 0.85 : 0.8) * B;
+    const cap = (high ? 1 : atLunch ? 0.9 : needRest <= 0.85 * B ? 0.85 : 0.8) * B;
     const leave = Math.max(arrive, Math.min(needRest, cap));
     const kw = s.st[2], cmin = chargeMinutes(arrive / B, leave / B, B, kw, P.winter), dmin = detourMin(s.d);
     const full = cmin + v.stopOverheadMin + dmin;
@@ -180,8 +181,9 @@ export function planCharging(line, c, v, depart, lineMw = null, X = null) {
     const guess = (s) => (far - s.pos) * 0.3 + (100 - Math.min(s.st[2], 100)) * 0.15 + priceOf(s.st) * 15 + detourMin(s.d);
     const tries = reach.sort((a, b) => guess(a) - guess(b)).slice(0, depth > 0 ? BRANCH : 1);
     let best = null;
-    for (const s of tries) {
-      const one = stopAt(s, st);
+    for (const s of tries) for (const high of [false, true]) {
+      const one = stopAt(s, st, high);
+      if (high && one.stop.leavePct <= 85) continue;                 // nothing more than the normal stop
       const rest = solve(one.next, depth - 1, n + 1);
       if (!rest) continue;
       const tot = { stops: [one.stop, ...rest.stops], counted: one.counted + rest.counted, eur: one.stop.eur + rest.eur,
