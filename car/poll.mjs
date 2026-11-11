@@ -279,7 +279,7 @@ if (trip && !trip.active && !trip.saved && !SHOW) {
   const tt = tripTotals(trip, pts);
   const log2 = readJson('roads.json', []);
   const m = new Date(trip.startAt).getMonth() + 1;
-  const temps = pts.filter((p) => p.tempC != null && p.moving !== false).map((p) => p.tempC);
+  const temps = pts.filter((p) => p.tempC != null).map((p) => p.tempC);      // ('moving' is always false on this car)
   const temp = temps.length ? +(temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null;
   log2.push({ at: trip.startAt, endAt: end, winter: m >= 11 || m <= 3, temp, ...tt });
   writeJson('roads.json', log2.slice(-40));
