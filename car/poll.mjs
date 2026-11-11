@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mjs';
-import { evaluate } from '../app/js/enroute.js';
+import { evaluate, tripTotals } from '../app/js/enroute.js';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -29,10 +29,10 @@ try {
     state.tripMsg = m.id;
     const x = JSON.parse(m.message);
     if (x.type === 'start' && x.trip?.profile) { trip = { ...x.trip, active: true }; state.alert = null; log('trip started', trip.id); }
-    if (x.type === 'end' && trip && trip.id === x.id) { trip.active = false; log('trip ended by the phone', trip.id); }
+    if (x.type === 'end' && trip && trip.id === x.id) { trip.active = false; trip.endAt = now; log('trip ended by the phone', trip.id); }
   }
 } catch (e) { log('trip channel error:', e.message); }
-if (trip?.active && now - trip.startAt > 36 * 3600e3) trip.active = false;      // forgotten trip
+if (trip?.active && now - trip.startAt > 36 * 3600e3) { trip.active = false; trip.endAt = now; }      // forgotten trip
 
 // ---- 0b. charge stop at 6:00 (D-038): "don't stop tomorrow morning" from the phone, on <channel>-commande ----
 try {
@@ -179,6 +179,18 @@ const summary = cur && {
 };
 
 if (summary) {
+  // real consumption measured on followed trips (battery % drops), by season and kind of road
+  const g = {};
+  for (const r of readJson('roads.json', [])) {
+    for (const [k, km, v] of [['autoroute', r.mwKm, r.mwKwh100], ['autres', r.otherKm, r.otherKwh100]]) {
+      if (v == null || !km) continue;
+      const key = (r.winter ? 'hiver_' : 'ete_') + k; g[key] = g[key] || { km: 0, kwh: 0, n: 0 };
+      g[key].km += km; g[key].kwh += v * km / 100; g[key].n++;
+    }
+  }
+  summary.roads = Object.fromEntries(Object.entries(g).map(([k, x]) => [k, { kwh100: +(x.kwh / x.km * 100).toFixed(1), km: Math.round(x.km), n: x.n }]));
+}
+if (summary) {
   const rem = readJson('remote.json'), ch = readJson('charge.json', {});
   summary.charge = { active: !!rem, tempo: state.tempo || {}, skip: state.chargeSkip || null, last: ch.last || null, manual: ch.manual || null };
 }
@@ -204,14 +216,30 @@ if (er && !SHOW) {
   const why = !a.id ? 'start' : a.level !== er.level || a.rec !== er.rec ? 'change' : !a.mw && er.mwMeasured ? 'mw'
     : er.done ? 'done' : er.d - (a.d ?? 0) >= 1 && now - a.at > 30 * 60e3 ? 'periodic' : null;
   if (why === 'done') {
-    await alert('🏁 Arrivé', [`Batterie ${cur.level} %. Suivi terminé.`], 2, ['checkered_flag']);
-    trip.active = false;
+    trip.active = false; trip.endAt = now;
+    const tt = tripTotals(trip, history.filter((p) => p.at >= trip.startAt - 60e3 && p.km != null && p.level != null).concat(cur));
+    const kw = (x) => String(x).replace('.', ',');
+    await alert('🏁 Arrivé', [`Batterie ${cur.level} %. Suivi terminé.`,
+      tt.mwKwh100 != null ? `Conso réelle sur autoroute : ${kw(tt.mwKwh100)} kWh/100 km (${tt.mwKm} km).` : '',
+      tt.otherKwh100 != null ? `Autres routes : ${kw(tt.otherKwh100)} kWh/100 km (${tt.otherKm} km).` : ''].filter(Boolean), 2, ['checkered_flag']);
   } else if (why) {
     const head = why === 'start' ? 'Suivi batterie démarré — ' : why === 'mw' ? 'Conso autoroute mesurée — ' : '';
     const prio = er.level === 'non' ? 5 : er.level === 'juste' ? 4 : why === 'change' || why === 'mw' ? 3 : 2;
     await alert(head + er.title, er.lines, prio, [er.level === 'ok' ? 'battery' : er.level === 'juste' ? 'warning' : 'rotating_light']);
   }
   if (why) state.alert = { id: trip.id, level: er.level, rec: er.rec, mw: er.mwMeasured, d: er.d, at: now };
+}
+// finished trip: keep its real motorway / other-road consumption (used by future route plans, D-039)
+if (trip && !trip.active && !trip.saved && !SHOW) {
+  const end = trip.endAt || now;
+  const pts = history.filter((p) => p.at >= trip.startAt - 60e3 && p.at <= end + 60e3 && p.km != null && p.level != null);
+  const tt = tripTotals(trip, pts);
+  const log2 = readJson('roads.json', []);
+  const m = new Date(trip.startAt).getMonth() + 1;
+  log2.push({ at: trip.startAt, winter: m >= 11 || m <= 3, ...tt });
+  writeJson('roads.json', log2.slice(-40));
+  trip.saved = true;
+  log('trip measured:', JSON.stringify(tt));
 }
 if (trip && !SHOW) writeJson('trip.json', trip);
 

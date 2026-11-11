@@ -363,3 +363,12 @@ stop it. Wanted: stop at 6:00 every day unless asked otherwise (button), always 
 
 Addition (2026-11-10, app v18): start / stop now buttons on the charge card, relayed by the home computer within
 ~2 min (the phone cannot talk to the car itself without exposing the account); the answer comes as a notification.
+
+## D-039 — Real motorway consumption kept from each followed trip (2026-11-11)
+
+At the end of a followed trip ("Suivre ma batterie"), the home computer splits the battery % drops of the whole trip
+between motorway and other roads using the planned route (tripTotals in enroute.js), keeps it in roads.json (40 trips)
+and tells it in the arrival notification. The phone gets the totals by season (summary.roads); once 100 km are measured
+for a season and road kind, the route planner uses them before Peugeot's trip energy (which needs calibration and
+classifies whole trips by average speed only). Why: Thomas wants the real motorway figure, and a mixed trip was
+otherwise counted as one block.
