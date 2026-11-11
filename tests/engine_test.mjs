@@ -28,7 +28,7 @@ const r = await analyse(o, D[dest], vv, new Date(when), () => {});
 const hm = (m) => `${Math.floor(Math.round(m) / 60)} h ${String(Math.round(m) % 60).padStart(2, '0')}`;
 console.log(`${dest} ${veh}: ${r.count} évalués, ${r.eff.length} efficaces, TomTom ${stats.api} requêtes (+${stats.cached} cache), confirmés ${r.confirmed}, ${Math.round((Date.now() - t0) / 1000)} s`);
 for (const e of r.eff) {
-  console.log(`  ${e.best ? '⭐' : e.freeWin ? '🟢' : '  '} +${String(Math.round(e.dMin)).padStart(3)}'  -${e.save.toFixed(2).padStart(6)} €  ${hm(e.min)}  ${e.cost.toFixed(2)} €  ${e.label.slice(0, 100)}`);
+  console.log(`  ${e.isBase ? '🏁' : '  '}${e.best ? '⭐' : e.freeWin ? '🟢' : '  '} +${String(Math.round(e.dMin)).padStart(3)}'  -${e.save.toFixed(2).padStart(6)} €  ${hm(e.min)}  ${e.cost.toFixed(2)} €  ${e.label.slice(0, 100)}`);
   if (e.charge) {
     const c = e.charge;
     if (!c.ok) console.log('        ⚠️ pas de borne rapide atteignable trouvée');

@@ -402,3 +402,12 @@ way back (36 % before), corrected consumption 18.8 / 19.4.
 Addition (same day): Open-Meteo counts each elevation point as one request (free: 600/min, 10 000/day). So a search
 measures the fastest route only (≤ 180 points) and scales it to the other options (retarget); the option followed or
 saved gets its own elevation (ownTerrain) at that moment.
+
+## D-042 — e-208: "Le plus rapide" counts the charging time (2026-11-11)
+
+With the e-208 the reference option (time and savings measured from it, always shown, "Le plus rapide") is the
+fastest once charging stops are counted, not the fastest to drive. The all-motorway route stays only if it is cheaper
+than that one; the summary explains when it is slower ("les bornes y sont moins bien placées"). Why: home →
+Demangevelle 12 Nov 7:18, motorway 6 h 42 with 3 stops (only service-area chargers count on the motorway) while the
+A105 option took 6 h 35 with 2, and was shown as "−7 min" against "Le plus rapide". Flag: isBase (isRef keeps
+meaning "the TomTom fastest route", used for the Google Maps links).

@@ -355,7 +355,7 @@ function renderPlaceList() {
 // trips: [{id, name, o, d, veh, label, via, saved, savedAt, depart}]
 function saveTrip(e) {
   const r = state.result;
-  const def = `${r.fromLabel} → ${r.toLabel}${e.isRef ? ' (le plus rapide)' : ''}`;
+  const def = `${r.fromLabel} → ${r.toLabel}${e.isBase ?? e.isRef ? ' (le plus rapide)' : ''}`;
   const name = (prompt('Nom de ce trajet :', def) || '').trim();
   if (!name) return;
   const trips = load('trips', []);
@@ -557,10 +557,10 @@ function routeCard(e, { compact = false } = {}) {
   const dm = Math.round(e.dMin);
   const lost = dm === 0 ? 'même durée' : dm < 0 ? `${dm} min` : `+${dm} min`;
   div.innerHTML = `
-    <div class="head"><span class="save">${e.isRef ? 'Le plus rapide' : '−' + eur(e.save)}</span><span class="lost">${lost}</span></div>
+    <div class="head"><span class="save">${e.isBase ?? e.isRef ? 'Le plus rapide' : e.save >= 0 ? '−' + eur(e.save) : '+' + eur(-e.save)}</span><span class="lost">${lost}</span></div>
     ${badges ? `<div>${badges}</div>` : ''}
     <div class="label">${escapeHtml(e.label)}</div>
-    ${e.isRef ? '' : `<div class="split">${splitText(e, state.result.vehKey)}</div>`}
+    ${e.isBase ?? e.isRef ? '' : `<div class="split">${splitText(e, state.result.vehKey)}</div>`}
     <div class="split">Péages payés : ${escapeHtml(tollsText(e.details))}</div>
     ${!e.isRef && e.toll < 0.05 ? '<div class="split">👉 Dans Google Maps, activez aussi « Éviter les péages » (Options) pour être sûr de rester sur cet itinéraire.</div>' : ''}
     ${chargeHtml(e)}
@@ -610,12 +610,13 @@ function escapeHtml(s) { return s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<'
 
 function render() {
   const { eff, count, secs } = state.result;
-  const f0 = eff.find((e) => e.isRef) || eff[0];
+  const f0 = eff.find((e) => e.isBase ?? e.isRef) || eff[0];
   const cheapest = eff.reduce((a, b) => (b.cost < a.cost ? b : a));
   const best = eff.find((e) => e.best);
   const wins = eff.filter((e) => e.freeWin);
   $('summary').innerHTML = `
-    <h2>Le plus rapide : ${hm(f0.min)} · ${eur(f0.cost)}</h2>
+    <h2>Le plus rapide${state.result.v.type === 'ev' ? ' (recharges comprises)' : ''} : ${hm(f0.min)} · ${eur(f0.cost)}</h2>
+    ${state.result.motorway ? `<p class="hint">${f0.isRef ? '' : `C'est « ${escapeHtml(f0.label)} ». `}Le tout-autoroute roule plus vite mais met ${hm(state.result.motorway.min)}${state.result.motorway.stops ? ` avec ${state.result.motorway.stops} recharges` : ''} : les bornes y sont moins bien placées.</p>` : ''}
     <p class="hint" style="margin-top:0">dont péages ${eur(f0.toll)}, ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(f0.energy)}</p>
     ${state.result.v.tempInfo ? (() => { const ti = state.result.v.tempInfo, c = (x) => String(x).replace('.', ',');
       return `<p class="hint">🌡️ ${ti.T} °C (${ti.src}) → conso autoroute ${c(ti.kM)} kWh/100 km (${ti.srcM}), autres routes ${c(ti.kO)} (${ti.srcO})</p>`; })() : ''}
