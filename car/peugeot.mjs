@@ -168,6 +168,7 @@ export function digest(s) {
     charging: ch.status ?? null, plugged: ch.plugged ?? null,
     chargeKmH: ch.chargingRate ?? null, chargeLeft: ch.remainingTime ?? null, chargeMode: ch.chargingMode ?? null,   // km/h, ISO duration, Slow/Quick
     moving: s.kinetic?.moving ?? null, ignition: s.ignition?.type ?? null,
+    tempC: s.environment?.air?.temp ?? null,                 // outside temperature (°C)
   };
 }
 export async function status(vid) { return api(`/vehicles/${vid}/status`); }

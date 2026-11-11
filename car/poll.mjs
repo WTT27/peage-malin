@@ -9,6 +9,7 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mjs';
 import { evaluate, tripTotals } from '../app/js/enroute.js';
+import { fitModel } from '../app/js/temp.js';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -107,6 +108,14 @@ if (SHOW || now - state.lastTrips > 3600e3) {
       url = next ? next.replace(/^.*\/connectedcar\/v4\/user/, '').replace(/[?&]client_id=[^&]*/, '').replace(/[?&]locale=[^&]*/, '') : null;
     }
     trips.sort((a, b) => Date.parse(a.start) - Date.parse(b.start));
+    // outside temperature during each trip, from the car readings (kept with the trip: readings are kept 60 days only)
+    const hist = (() => { try { return readFileSync(join(DIR, 'history.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)); } catch { return []; } })();
+    for (const t of trips) {
+      if (t.temp != null || !t.start) continue;
+      const t0 = Date.parse(t.start), t1 = t0 + (t.sec || 0) * 1000;
+      const ts = hist.filter((p) => p.tempC != null && p.at >= t0 - 5 * 60e3 && p.at <= t1 + 5 * 60e3).map((p) => p.tempC);
+      if (ts.length) t.temp = +(ts.reduce((a, b) => a + b, 0) / ts.length).toFixed(1);
+    }
     writeJson('trips.json', trips);
     state.lastTrips = now;
   } catch (e) { log('trips error:', e.message); }
@@ -164,6 +173,31 @@ for (const t of trips) {
   g.km += t.km; g.kwh += t.wh / 1000 * calib.factor; g.n++;
 }
 const stats = Object.fromEntries(Object.entries(groups).map(([k, g]) => [k, { kwh100: +(g.kwh / g.km * 100).toFixed(1), km: Math.round(g.km), n: g.n }]));
+// consumption vs outside temperature (D-040): followed trips (battery drops on known motorway km) + Peugeot trips
+// (calibrated energy, motorway only once the calibration is measured), each with the temperature read during it
+const roadsLog = readJson('roads.json', []);
+const tempOf = (t0, t1) => {
+  const ts = history.filter((p) => p.tempC != null && p.at >= t0 - 5 * 60e3 && p.at <= t1 + 5 * 60e3).map((p) => p.tempC);
+  return ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : null;
+};
+const tpts = { autoroute: [], autres: [] };
+for (const r of roadsLog) {
+  if (r.temp == null) continue;
+  // under 20 km the battery's 1 % steps (0.46 kWh) make a followed-trip figure too rough
+  if (r.mwKwh100 != null && r.mwKm >= 20) tpts.autoroute.push({ T: r.temp, k: r.mwKwh100, km: r.mwKm });
+  if (r.otherKwh100 != null && r.otherKm >= 20) tpts.autres.push({ T: r.temp, k: r.otherKwh100, km: r.otherKm });
+}
+for (const t of trips) {
+  if (!t.wh || t.km < 5) continue;
+  const t0 = Date.parse(t.start), t1 = t0 + t.sec * 1000;
+  if (roadsLog.some((r) => r.endAt && t0 < r.endAt && t1 > r.at)) continue;    // already counted as a followed trip
+  const T = t.temp ?? tempOf(t0, t1);
+  if (T == null) continue;
+  const kind = (t.avgKmh ?? 0) >= 75 ? 'autoroute' : 'autres';
+  if (kind === 'autoroute' && calib.source !== 'mesure') continue;
+  tpts[kind].push({ T, k: t.wh / 1000 * calib.factor / t.km * 100, km: t.km });
+}
+const tmodel = { autoroute: fitModel(tpts.autoroute, 'autoroute'), autres: fitModel(tpts.autres, 'autres') };
 const all = Object.values(groups).reduce((s, g) => ({ km: s.km + g.km, kwh: s.kwh + g.kwh }), { km: 0, kwh: 0 });
 const avg = all.km > 50 ? +(all.kwh / all.km * 100).toFixed(1) : null;
 
@@ -176,6 +210,7 @@ const summary = cur && {
   v: 1, at: now, carAt: cur.carAt, level: cur.level, kwh: kwhOf(cur) != null ? +kwhOf(cur).toFixed(2) : null,
   exactKwh: false, odometer: cur.km, carRange: cur.autonomy, charging: cur.charging, plugged: cur.plugged,
   live, remainingKm, rateUsed: live?.kwh100 || avg || 16, avg, stats, trips: trips.length, calib,
+  tempC: cur.tempC ?? null, tmodel,
 };
 
 if (summary) {
@@ -237,7 +272,9 @@ if (trip && !trip.active && !trip.saved && !SHOW) {
   const tt = tripTotals(trip, pts);
   const log2 = readJson('roads.json', []);
   const m = new Date(trip.startAt).getMonth() + 1;
-  log2.push({ at: trip.startAt, winter: m >= 11 || m <= 3, ...tt });
+  const temps = pts.filter((p) => p.tempC != null && p.moving !== false).map((p) => p.tempC);
+  const temp = temps.length ? +(temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null;
+  log2.push({ at: trip.startAt, endAt: end, winter: m >= 11 || m <= 3, temp, ...tt });
   writeJson('roads.json', log2.slice(-40));
   trip.saved = true;
   log('trip measured:', JSON.stringify(tt));

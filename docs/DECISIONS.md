@@ -372,3 +372,16 @@ and tells it in the arrival notification. The phone gets the totals by season (s
 for a season and road kind, the route planner uses them before Peugeot's trip energy (which needs calibration and
 classifies whole trips by average speed only). Why: Thomas wants the real motorway figure, and a mixed trip was
 otherwise counted as one block.
+
+## D-040 — e-208 consumption follows the outside temperature instead of winter/summer (2026-11-11)
+
+The car reports the outside temperature (status environment.air.temp) at every reading; it is kept in the history,
+on each Peugeot trip (average of its readings) and on each followed trip. Law (app/js/temp.js):
+kWh/100 km = ref × (1 + s × max(0, 18 − T)). The home computer fits it per road kind (motorway / other) on followed
+trips (parts ≥ 20 km) and Peugeot trips (calibrated energy; motorway only once calibrated; trips already counted as
+followed trips skipped); the cold slope s is learnt only with ≥ 8 °C of spread below 18 °C, ≥ 2× the minimum km and
+≥ 5 trips, otherwise defaults (motorway 0.0085 = Thomas's 18 → 20 settings at 5 °C; other roads 0.015). The measured ref
+replaces the settings from 100 km (motorway) / 150 km (other roads). Route plans use the trip's forecast temperature
+(Open-Meteo, free, positions rounded to 0.1°, mean of departure and arrival at the departure hour, ≤ 15 days; else the
+month's usual temperature). Why: Thomas's idea; 14 °C in November is not "winter", and the effect of cold is gradual.
+First check: 2026-11-11 trip at 14 °C, settings law gives 18.6 on motorway, measured 18.2.

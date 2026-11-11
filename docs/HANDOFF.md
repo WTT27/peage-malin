@@ -63,6 +63,12 @@ Saving split (tolls / fuel), tolls paid listed per option, saved places (chips),
 Last tab remembered (localStorage 'tab'); opens on the e-208 tab while a trip is followed; the tab shows a coloured dot
 (ok/juste/non) during a trip; the EV form keeps a one-line battery reminder (#carMini).
 
+## 7c. Consumption vs temperature (D-039, D-040)
+
+Followed trips → roads.json (motorway / other kWh/100 km, average outside temperature). Car readings and Peugeot trips
+carry tempC / temp. poll.mjs fits summary.tmodel {autoroute, autres}: {ref, s, km, enough, fitted}; the app's planRates()
+uses it at the forecast temperature (tripTemp, Open-Meteo). Shown on the e-208 tab and in the route summary (🌡️ line).
+
 ## 8. Charge stop at 6:00 — built 2026-11-10 (D-038), setup done the same day
 
 Setup done (OTP activation, MQTT token, cron 05:50). Lessons: pycryptodome 4.4 removed py3compat (stellotp/oaep.py
