@@ -236,7 +236,14 @@ if (summary && onTrip) {
   const pts = history.filter((p) => p.at >= trip.startAt - 60e3 && p.km != null && p.level != null);
   if (!pts.length || pts[pts.length - 1].at !== cur.at) pts.push(cur);
   er = evaluate(trip, pts);
-  if (er) summary.enroute = { id: trip.id, carAt: cur.carAt, ...er };
+  if (er) {
+    // arrived = close to the end AND the car has stopped (ignition off, or no km for 8 min), or well past the end;
+    // the route's own length alone ended the follow-up while still driving the last km (2026-11-11)
+    let lastMove = trip.startAt;
+    for (let i = 1; i < pts.length; i++) if (pts[i].km - pts[i - 1].km > 0.1) lastMove = Date.parse(pts[i].carAt) || pts[i].at;
+    er.done = er.left < -5 || (er.left < 5 && (cur.ignition === 'Stop' || now - lastMove > 8 * 60e3));
+    summary.enroute = { id: trip.id, carAt: cur.carAt, ...er };
+  }
 }
 async function alert(title, lines, priority, tags) {
   if (SHOW) { console.log('ALERT', priority, title, lines); return; }
