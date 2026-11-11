@@ -6,6 +6,7 @@
 // ahead. So consumption is tracked separately for motorway and other roads (the planned route says which km are
 // motorway). Good news only counts for the same kind of road; bad news (cold, wind, speed) is applied to both.
 import { cumulative } from './geo.js';
+import { coarsen, extraFn } from './terrain.js';
 
 const SAFE_EXTRA = 5;          // % above the reserve for "marge OK"
 const MW_MIN_KM = 25;          // motorway km driven before the measured motorway figure is used
@@ -16,7 +17,7 @@ const dec1 = (x) => x.toFixed(1).replace('.', ',');
 // ---------- profile of a planned trip (built on the phone when "Suivre ma batterie" is pressed) ----------
 // line: [[lat, lon]] (~1 point per km), mw: true per point on a motorway, routeKm: route length, plan: charging plan
 // (stops with posKm), stations: [{posKm, name, kw}] fast chargers along the route, P: {batt, reserve, target, kM, kO}
-export function buildProfile({ line, mw, routeKm, plan, stations, P, label }) {
+export function buildProfile({ line, mw, routeKm, plan, stations, P, label, terrain = null, winds = null, tPts = 100 }) {
   const cum = cumulative(line), scale = routeKm / (cum[cum.length - 1] || routeKm);
   const segs = [];
   for (let i = 1; i < line.length; i++) {
@@ -45,6 +46,7 @@ export function buildProfile({ line, mw, routeKm, plan, stations, P, label }) {
     st: st.map((s) => [+s.pos.toFixed(1), short(s.name), Math.round(s.kw)]),
     batt: P.batt, reserve: Math.round(P.reserve * 100), target: Math.round(P.target * 100),
     kM: +P.kM.toFixed(1), kO: +P.kO.toFixed(1),
+    ...(terrain ? { tr: coarsen(terrain, tPts), w: winds || [] } : {}),     // elevation, headings, wind (D-041)
   };
 }
 
@@ -55,13 +57,23 @@ function mwKm(p, a, b) {
   return m;
 }
 // kWh needed from a to b with motorway / other rates (kWh/100 km); beyond the end of the route: motorway rate
-function energy(p, a, b, rM, rO) {
+// X: extra energy for elevation + wind (kWh from km 0, D-041), or null
+function energy(p, a, b, rM, rO, X = null) {
   if (b <= a) return 0;
   const end = Math.min(b, p.total), m = a < end ? mwKm(p, a, end) : 0, o = Math.max(0, end - a) - m;
-  return (m * rM + o * rO + Math.max(0, b - Math.max(a, p.total)) * rM) / 100;
+  return (m * rM + o * rO + Math.max(0, b - Math.max(a, p.total)) * rM) / 100 + (X && a < end ? X(end) - X(a) : 0);
 }
 // km that can be driven from a with e kWh
-function reach(p, a, e, rM, rO) {
+function reach(p, a, e, rM, rO, X = null) {
+  if (X) {                                                  // step by 0.5 km: climbs and descents change the rate
+    let x = a, left = e;
+    for (let k = 0; k < 4000; k++) {
+      const de = energy(p, x, x + 0.5, rM, rO, X);
+      if (de > 0 && de >= left) return x + 0.5 * left / de - a;
+      left -= de; x += 0.5;
+    }
+    return x - a;
+  }
   let x = a, left = e;
   for (const [s0, s1, w] of p.segs) {
     if (s1 <= x) continue;
@@ -76,14 +88,15 @@ function reach(p, a, e, rM, rO) {
 // pts: car readings since departure [{km (odometer), level (%), at}], oldest first. Each stretch between two readings
 // (no charge in between) is shared between motorway and other roads by the planned route; the most recent WINDOW_KM
 // of each are kept.
-function measure(p, startKm, pts, windowKm = WINDOW_KM) {
+function measure(p, startKm, pts, windowKm = WINDOW_KM, X = null) {
   const out = { mw: { km: 0, kwh: 0 }, other: { km: 0, kwh: 0 } };
   for (let i = pts.length - 1; i > 0; i--) {
     const a = pts[i - 1], b = pts[i];
     if (b.level > a.level) continue;                      // charged in between
     const da = a.km - startKm, db = b.km - startKm, len = db - da;
     if (len < 0.3) continue;
-    const kwh = (a.level - b.level) / 100 * p.batt;
+    // battery used, minus what the climbs / wind of this stretch cost (→ flat, calm-air consumption)
+    const kwh = (a.level - b.level) / 100 * p.batt - (X ? X(Math.min(p.total, Math.max(0, db))) - X(Math.min(p.total, Math.max(0, da))) : 0);
     const m = mwKm(p, Math.max(0, da), Math.min(p.total, db)), o = Math.max(0, len - m);
     const eM = m * p.kM, eO = o * p.kO, tot = eM + eO || 1;    // energy shared out as the plan expects it
     if (out.mw.km < windowKm && m > 0) { out.mw.km += m; out.mw.kwh += kwh * eM / tot; }
@@ -94,7 +107,7 @@ function measure(p, startKm, pts, windowKm = WINDOW_KM) {
 }
 // whole trip, at the end: real consumption on motorway and on other roads (from battery % drops), kept for future plans
 export function tripTotals(trip, pts) {
-  const m = measure(trip.profile, trip.startKm, pts, Infinity);
+  const m = measure(trip.profile, trip.startKm, pts, Infinity, extraOf(trip));
   const r = (g) => (g.km >= 5 ? +(g.kwh / g.km * 100).toFixed(1) : null);
   return { mwKm: Math.round(m.mw.km), mwKwh100: r(m.mw), otherKm: Math.round(m.other.km), otherKwh100: r(m.other) };
 }
@@ -116,6 +129,12 @@ function rates(p, meas) {
   return { rM, rO, mM, mO };
 }
 
+// elevation + wind of a trip (wind refreshed by the phone at departure and by the home computer every hour)
+export function extraOf(trip) {
+  const p = trip.profile;
+  return p.tr ? extraFn(p.tr, trip.wind || p.w || []) : null;
+}
+
 // ---------- the check ----------
 // trip: {profile, startKm, startLevel, startAt}; pts: readings since departure (the first one may be the departure)
 export function evaluate(trip, pts) {
@@ -123,12 +142,13 @@ export function evaluate(trip, pts) {
   if (!cur || cur.level == null || cur.km == null) return null;
   const all = [{ km: trip.startKm, level: trip.startLevel, at: trip.startAt }, ...pts.filter((x) => x.km != null && x.level != null)];
   const d = Math.min(p.total, Math.max(0, cur.km - trip.startKm));
-  const meas = measure(p, trip.startKm, all);
+  const X = extraOf(trip);
+  const meas = measure(p, trip.startKm, all, WINDOW_KM, X);
   const { rM, rO, mM, mO } = rates(p, meas);
   const B = p.batt, now = cur.level / 100 * B, resKwh = p.reserve / 100 * B;
-  const pctAt = (pos) => (now - energy(p, d, pos, rM, rO)) / B * 100;
+  const pctAt = (pos) => (now - energy(p, d, pos, rM, rO, X)) / B * 100;
   const left = p.total - d;
-  const rangeKm = Math.max(0, reach(p, d, now - resKwh, rM, rO));
+  const rangeKm = Math.max(0, reach(p, d, now - resKwh, rM, rO, X));
 
   const nextStop = p.stops.find((s) => s[0] > d + 0.5);
   const goal = nextStop ? { pos: nextStop[0], name: nextStop[1], planPct: nextStop[2], stop: true }
@@ -154,7 +174,7 @@ export function evaluate(trip, pts) {
   // slowing down: −10 % consumption per 10 km/h less on the motorway (rough)
   let slow = '';
   if (level !== 'ok') {
-    const needE = energy(p, d, goal.pos, rM, rO) + (safe - p.reserve) / 100 * B * (level === 'juste' ? 1 : 0), have = now - resKwh;
+    const needE = energy(p, d, goal.pos, rM, rO, X) + (safe - p.reserve) / 100 * B * (level === 'juste' ? 1 : 0), have = now - resKwh;
     const f = have / (needE || 1), mwAhead = mwKm(p, d, goal.pos) / Math.max(1, goal.pos - d);
     if (mwAhead > 0.5 && f >= 0.88 && f < 1) slow = 'En roulant à 100 km/h au lieu de 110 sur l\'autoroute, ça devrait passer (estimation).';
     else if (mwAhead > 0.5 && f >= 0.78 && f < 1) slow = 'En roulant à 90 km/h sur l\'autoroute, ça pourrait passer (estimation).';
@@ -164,7 +184,7 @@ export function evaluate(trip, pts) {
   const where = (pos) => `dans ${r0(pos - d)} km`;
   const title = level === 'ok' ? '✅ Marge suffisante' : level === 'juste' ? '⚠️ Marge juste' : '🛑 Batterie insuffisante';
   const lines = [];
-  const arrTxt = arr >= 1 ? `arrivée ≈ ${r0(arr)} %` : `vous n'y arriverez pas (batterie vide ≈ ${r0(Math.max(0, goal.pos - d - reach(p, d, now, rM, rO)))} km avant)`;
+  const arrTxt = arr >= 1 ? `arrivée ≈ ${r0(arr)} %` : `vous n'y arriverez pas (batterie vide ≈ ${r0(Math.max(0, goal.pos - d - reach(p, d, now, rM, rO, X)))} km avant)`;
   lines.push(goal.stop
     ? `Prochaine recharge : ${goal.name}, ${where(goal.pos)} → ${arrTxt}${goal.planPct != null ? ` (prévu ${goal.planPct} %)` : ''}`
     : `Arrivée ${where(goal.pos)} → ${arrTxt}${p.target > p.reserve && arr >= 1 ? ` (souhaité ${p.target} %)` : ''}`);
@@ -175,6 +195,10 @@ export function evaluate(trip, pts) {
   lines.push(`Autonomie sur la route à venir : ${r0(rangeKm)} km jusqu'à ${p.reserve} %${rangeKm > left + 1 ? ` (il reste ${r0(left)} km)` : ''}`);
   lines.push(`Conso autoroute : ${dec1(rM)} kWh/100 km ${mM != null ? `(mesurée sur ${r0(meas.mw.km)} km)` : rM > p.kM + 0.05 ? '(prévue, relevée car plus forte ailleurs)' : '(prévue, pas encore mesurée sur autoroute)'}`
     + ` · autres routes ${dec1(rO)} ${mO != null ? `(mesurée sur ${r0(meas.other.km)} km)` : '(prévue)'}`);
+  if (X) {
+    const ex = X(goal.pos) - X(d);
+    if (Math.abs(ex) >= 0.4) lines.push(`Relief et vent jusqu'à ${goal.stop ? 'la recharge' : 'l\'arrivée'} : ${ex > 0 ? '+' : '−'}${dec1(Math.abs(ex))} kWh (≈ ${ex > 0 ? '+' : '−'}${r0(Math.abs(ex) / B * 100)} % de batterie)`);
+  }
   lines.push(`🔋 ${cur.level} % · ${r0(d)} km faits sur ${r0(p.total)}`);
   return { level, title, lines, rec: rec?.name || null, arr: r0(arr), goal: goal.name, rangeKm: r0(rangeKm), d: r0(d), left: r0(left),
     rM: +rM.toFixed(1), rO: +rO.toFixed(1), mwMeasured: mM != null, done: left < 1.5 };

@@ -4,6 +4,7 @@ import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 import { mergeStops, routeStations, evParams } from './charging.js';
 import { tripTemp, planRates, kwhAt } from './temp.js';
+import { fetchWinds } from './terrain.js';
 import { buildProfile, evaluate } from './enroute.js';
 
 const $ = (id) => document.getElementById(id);
@@ -223,9 +224,9 @@ function profileOf(e) {
   const r = state.result, P = evParams(r.v, r.depart, e.sec);
   const stations = routeStations(e.line, e.km, e.lineMw);
   let prof = null;
-  for (const keep of [1, 2, 3, 4]) {
+  for (const [keep, tPts] of [[1, 100], [2, 100], [2, 60], [3, 60], [4, 40], [4, 25]]) {
     prof = buildProfile({ line: e.line, mw: e.lineMw, routeKm: e.km, plan: e.charge, stations: stations.filter((_, i) => i % keep === 0), P,
-      label: `${r.fromLabel} → ${r.toLabel}` });
+      label: `${r.fromLabel} → ${r.toLabel}`, terrain: e.terrain, winds: e.winds, tPts });
     if (JSON.stringify(prof).length < 3300) break;
   }
   return prof;
@@ -236,6 +237,10 @@ async function startTrip(profile) {
   const old = tripNow();
   if (old && !confirm('Un suivi est déjà en cours. Le remplacer par ce trajet ?')) return;
   const trip = { id: Date.now(), profile, startKm: car.odometer, startLevel: car.level, startAt: Date.now() };
+  if (profile.tr) {                                // wind now (the plan may have been made the day before)
+    const w = await fetchWinds(profile.tr.wp, new Date(), 90);
+    if (w.length) { trip.wind = w; trip.windAt = Date.now(); }
+  }
   store('enroute', trip);
   try { await postTrip({ type: 'start', trip }); trip.sent = true; } catch { trip.sent = false; }
   store('enroute', trip);

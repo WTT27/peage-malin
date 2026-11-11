@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mjs';
 import { evaluate, tripTotals } from '../app/js/enroute.js';
 import { fitModel } from '../app/js/temp.js';
+import { fetchWinds } from '../app/js/terrain.js';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -235,6 +236,13 @@ let er = null;
 if (summary && onTrip) {
   const pts = history.filter((p) => p.at >= trip.startAt - 60e3 && p.km != null && p.level != null);
   if (!pts.length || pts[pts.length - 1].at !== cur.at) pts.push(cur);
+  // wind on the road still ahead, refreshed every hour (positions rounded to 0.1°, Open-Meteo); past km keep theirs
+  if (trip.profile.tr && now - (trip.windAt || 0) > 3600e3 && !SHOW) {
+    const d = Math.max(0, cur.km - trip.startKm);
+    const w = await fetchWinds(trip.profile.tr.wp.filter((q) => q[0] >= d - 20), new Date(now), 90, d);
+    if (w.length) { trip.wind = [...(trip.wind || trip.profile.w || []).filter((q) => q[0] < d - 20), ...w]; trip.windAt = now; log('trip wind', JSON.stringify(w)); }
+    else trip.windAt = now - 3000e3;               // retry in 10 min
+  }
   er = evaluate(trip, pts);
   if (er) {
     // arrived = close to the end AND the car has stopped (ignition off, or no km for 8 min), or well past the end;

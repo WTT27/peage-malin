@@ -110,7 +110,7 @@ const detourMin = (d) => (d <= 0.3 ? 1 : 3 + 2 * d * 1.3 / 40 * 60);
 // Small search: at each stop up to BRANCH candidate stations are tried (3 levels deep, then the best guess is kept);
 // the plan with the least "charging minutes + € × MIN_PER_EUR" wins.
 const BRANCH = 8, DEPTH = 3, MIN_PER_EUR = 3;
-export function planCharging(line, c, v, depart, lineMw = null) {
+export function planCharging(line, c, v, depart, lineMw = null, X = null) {
   if (!DATA || !line || line.length < 2) return null;
   const P = evParams(v, depart, c.sec);
   const home = v.homeEurKwh;
@@ -130,7 +130,8 @@ export function planCharging(line, c, v, depart, lineMw = null) {
     const t = cum[hi] > cum[lo] ? (x - cum[lo]) / (cum[hi] - cum[lo]) : 0;
     return (ek[lo] + t * (ek[hi] - ek[lo])) * norm;
   };
-  const E = (a, b) => Math.max(0, eAt(b) - eAt(a));
+  // X: elevation + wind on top (kWh from km 0, D-041); a stretch can then cost less than the flat rate, never below 0
+  const E = X ? (a, b) => Math.max(0, eAt(b) - eAt(a) + X(Math.min(b, L)) - X(Math.min(a, L))) : (a, b) => Math.max(0, eAt(b) - eAt(a));
   const offRate = P.kO / 100;                              // detour to a station off the road
   const B = P.batt, t0 = depart.getHours() + depart.getMinutes() / 60;
   const priceOf = (st) => st[5] ?? NET_PRICE[DATA.brands[st[4]]] ?? v.fastEurKwh;
@@ -194,9 +195,9 @@ export function planCharging(line, c, v, depart, lineMw = null) {
   const plan = solve({ soc: P.start * B, pos: 0, clock: 0, lunchDone: !P.lunch }, DEPTH, 0);
   if (!plan) return { stops: [], ok: false, energy: null, chargeMin: null };
   const arriveKwh = plan.end.soc - E(plan.end.pos, L);
-  const homeKwh = Math.max(0, c.kwh - plan.kwh);
+  const homeKwh = Math.max(0, c.kwh + (X ? X(L) : 0) - plan.kwh);
   return { stops: plan.stops, ok: true, energy: homeKwh * home + plan.eur, chargeMin: plan.counted,
-    arrivePct: Math.round(arriveKwh / B * 100), winter: P.winter, lunchWanted: P.lunch };
+    arrivePct: Math.round(arriveKwh / B * 100), winter: P.winter, lunchWanted: P.lunch, extraKwh: X ? +X(L).toFixed(2) : null };
 }
 
 // add the charging stops to the Google Maps waypoints (in route order, max 9 in all; charging stops are kept first)

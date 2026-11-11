@@ -385,3 +385,16 @@ replaces the settings from 100 km (motorway) / 150 km (other roads). Route plans
 (Open-Meteo, free, positions rounded to 0.1°, mean of departure and arrival at the departure hour, ≤ 15 days; else the
 month's usual temperature). Why: Thomas's idea; 14 °C in November is not "winter", and the effect of cold is gradual.
 First check: 2026-11-11 trip at 14 °C, settings law gives 18.6 on motorway, measured 18.2.
+
+## D-041 — Elevation and wind along the route (2026-11-11)
+
+app/js/terrain.js: for the final routes of an e-208 search, the elevation every 1 km (2 km beyond 400 km) comes from
+Open-Meteo's free elevation API (median of 3 against bridges/cuttings) and the wind at ≤ 10 points from its forecast at
+the time the car passes there. Extra energy on top of the flat, calm-air consumption: climb m·g·Δh/0.9, descent
+−0.75·m·g·|Δh|, wind ½·ρ·CdA·((v+h)²−v²)/0.9 with h = 0.7 × the 10 m headwind component, m 1540 kg, CdA 0.64,
+v 110 km/h on motorway / 80 elsewhere. Used by the charging plan, and sent (coarsened, ≤ 100 steps) in the trip profile;
+the phone refreshes the wind when "Suivre ma batterie" is pressed, the home computer every hour on the road ahead. The
+live check and the end-of-trip measurement remove elevation/wind from the battery drops, so measured consumption (and
+the temperature law of D-040) is the flat, calm-air figure. Why: the 2026-11-11 round trip (same road, 14 °C) gave
+18.2 one way and 21.9 back; replayed with straight-line elevation + archived wind: predicted 32 % vs real 31 % on the
+way back (36 % before), corrected consumption 18.8 / 19.4.
