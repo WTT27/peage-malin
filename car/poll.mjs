@@ -47,7 +47,7 @@ try {
     if (x.type === 'skip' && /^\d{4}-\d\d-\d\d$/.test(x.date)) { state.chargeSkip = x.date; log('charge stop skipped for', x.date); }
     if (x.type === 'unskip') { state.chargeSkip = null; log('charge stop skip cancelled'); }
     // "start / stop the charge now" buttons: only recent requests (a request older than 10 min is dropped)
-    if (x.type === 'charge' && ['start', 'stop'].includes(x.action) && now - (m.time * 1000) < 10 * 60e3 && !SHOW) {
+    if (x.type === 'charge' && ['start', 'stop', 'preheat'].includes(x.action) && now - (m.time * 1000) < 10 * 60e3 && !SHOW) {
       log('charge', x.action, 'asked from the app');
       const out = openSync(join(DIR, 'charge.log'), 'a');
       spawn(process.execPath, [...process.execArgv, join(dirname(fileURLToPath(import.meta.url)), 'charge.mjs'), x.action, '--app'],

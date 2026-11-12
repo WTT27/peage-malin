@@ -432,3 +432,11 @@ Now: each command waits up to 180 s; before a stop/start the car is woken with /
 (as psa_car_controller does); the morning job makes up to 4 tries 2 min apart, and only a report sent after the command
 counts as the result (a final "0" with no new report counts as done). Lock 15 min. The app says the % may be old while
 charging.
+
+## D-045 — Pre-heating button (2026-11-12)
+
+Thomas asked for "launch the pre-heating" under the charge buttons. Same path as start/stop: the app posts
+{type: 'charge', action: 'preheat'} on the command channel, poll.mjs runs `charge.mjs preheat --app`, which wakes the
+car and sends /ThermalPrecond {asap: 'activate', programs} with the car's own 4 pre-heating slots sent back unchanged
+(read from the status, as psa_car_controller does; empty slot = hour 34 minute 7, off). Result in the ntfy alerts and on
+the card. Drive mode and heating use while driving are not given by the Peugeot API (checked on the raw status).

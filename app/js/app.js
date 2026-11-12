@@ -182,9 +182,11 @@ function renderCharge() {
     const P = pend && Date.now() - pend.at < 12 * 60e3 ? pend : null;
     const M = ch.manual && Date.now() - ch.manual.at < 3 * 3600e3 && (!P || ch.manual.at > P.at) ? ch.manual : null;
     const hhmm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-    html += '<div class="nowbtns"><button type="button" data-a="start">▶️ Démarrer la charge</button><button type="button" data-a="stop">⏹️ Arrêter la charge</button></div>';
-    if (P && !M) html += `<p class="old">⏳ ${P.action === 'stop' ? 'Arrêt' : 'Démarrage'} demandé à ${hhmm(P.at)} : l'ordinateur réveille la voiture et lui envoie (2 à 8 min), réponse en notification.</p>`;
-    else if (M) html += `<p class="old">${M.ok ? '✅' : '⚠️'} ${M.action === 'stop' ? 'Arrêt' : 'Démarrage'} de ${hhmm(M.at)} : ${M.ok ? 'fait' : 'pas confirmé'} — ${M.msg}.</p>`;
+    html += '<div class="nowbtns"><button type="button" data-a="start">▶️ Démarrer la charge</button><button type="button" data-a="stop">⏹️ Arrêter la charge</button></div>'
+      + '<div class="nowbtns"><button type="button" data-a="preheat">🔥 Lancer le préchauffage</button></div>';
+    const WORD = { stop: 'Arrêt', start: 'Démarrage', preheat: 'Préchauffage' };
+    if (P && !M) html += `<p class="old">⏳ ${WORD[P.action]} demandé à ${hhmm(P.at)} : l'ordinateur réveille la voiture et lui envoie (2 à 8 min), réponse en notification.</p>`;
+    else if (M) html += `<p class="old">${M.ok ? '✅' : '⚠️'} ${WORD[M.action] || M.action} de ${hhmm(M.at)} : ${M.ok ? 'fait' : 'pas confirmé'} — ${M.msg}.</p>`;
     else if (car.plugged === false) html += '<p class="old">La voiture n\'est pas branchée (dernière info).</p>';
   }
   // notifications (results, red days, trip alerts) arrive through the free ntfy app: explain once
@@ -213,7 +215,7 @@ function renderCharge() {
   if (b1) b1.onclick = () => send('skip');
   if (b2) b2.onclick = () => send('unskip');
   const now2 = async (action) => {
-    if (!confirm(action === 'stop' ? 'Arrêter la charge maintenant ?' : 'Démarrer la charge maintenant ?')) return;
+    if (!confirm({ stop: 'Arrêter la charge maintenant ?', start: 'Démarrer la charge maintenant ?', preheat: 'Lancer le préchauffage de la voiture maintenant (environ 30 min) ?' }[action])) return;
     try {
       const r = await fetch(`https://ntfy.sh/${carTopic()}-commande`, { method: 'POST', body: JSON.stringify({ type: 'charge', action }) });
       if (!r.ok) throw new Error();
@@ -221,7 +223,7 @@ function renderCharge() {
       renderCharge();
     } catch { alert('Pas de réseau : réessayez.'); }
   };
-  for (const a of ['start', 'stop']) { const b = box.querySelector(`[data-a=${a}]`); if (b) b.onclick = () => now2(a); }
+  for (const a of ['start', 'stop', 'preheat']) { const b = box.querySelector(`[data-a=${a}]`); if (b) b.onclick = () => now2(a); }
 }
 
 // ---------- "En route": battery vs the road still ahead while driving a planned trip (D-037) ----------

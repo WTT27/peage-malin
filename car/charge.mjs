@@ -115,7 +115,8 @@ async function carNow() {
   const el = (raw.energies || []).find((e) => e.type === 'Electric') || {};
   const ch = el.extension?.electric?.charging || {};
   const m = String(ch.nextDelayedTime || 'PT22H').match(/PT(?:(\d+)H)?(?:(\d+)M)?/) || [];
-  return { ...digest(raw), program: { hour: +(m[1] || 0), minute: +(m[2] || 0) }, mode: ch.chargingMode };
+  const ac = (raw.preconditionning || raw.preconditioning)?.airConditioning || {};
+  return { ...digest(raw), program: { hour: +(m[1] || 0), minute: +(m[2] || 0) }, mode: ch.chargingMode, ac };
 }
 // wake the car up first (asks it for its charging state): a sleeping car missed the 6:00 stop on 2026-11-12
 const wakeUp = () => command('/VehCharge/state', { action: 'state' }, 150).catch((e) => ({ ok: false, codes: [], err: e.message }));
@@ -290,4 +291,35 @@ if (cmd === 'morning') {
   await alert('⚠️ La charge n\'a pas pu être arrêtée', [`Jour ${COLOR[color]} : arrêtez-la dans l'appli MyPeugeot.`], red ? 5 : 4, ['warning']);
   process.exit(1);
 }
-console.log('Commandes : setup | check | stop | start | morning');
+// pre-heating now (from the app button): /ThermalPrecond {asap: activate}, sending back the car's own pre-heating
+// programs unchanged (same message as psa_car_controller). The car heats (or cools) the cabin for about 30 min.
+if (cmd === 'preheat') {
+  const app = process.argv.includes('--app');
+  const done = async (ok, msg, title) => {
+    const c = readJson('charge.json', {}); c.manual = { at: Date.now(), action: 'preheat', ok, msg }; writeJson('charge.json', c);
+    console.log(title, msg);
+    if (app) await alert(title, [msg], ok ? 3 : 4, ok ? ['fire'] : ['warning']);
+  };
+  for (let i = 0; i < 15 && !lock(); i++) await sleep(60e3);
+  let car;
+  try { car = await carNow(); } catch (e) { await done(false, 'Peugeot ne répond pas : ' + e.message, '⚠️ Préchauffage impossible'); process.exit(1); }
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], programs = {};
+  for (let k = 1; k <= 4; k++) programs['program' + k] = { day: [0, 0, 0, 0, 0, 0, 0], hour: 34, minute: 7, on: 0 };   // empty slot
+  for (const p of car.ac.programs || []) {
+    const t = String(p.start || '').match(/PT(?:(\d+)H)?(?:(\d+)M)?/) || [];
+    if (p.slot >= 1 && p.slot <= 4) programs['program' + p.slot] = { day: DAYS.map((d) => +(p.occurence?.day || []).includes(d)),
+      hour: +(t[1] || 0), minute: +(t[2] || 0), on: p.enabled ? 1 : 0 };
+  }
+  log(`preheat${app ? ' (app)' : ''}: car ${car.level} %, plugged ${car.plugged}, ac ${car.ac.status}`);
+  const w = await wakeUp();
+  log(`wake-up: ${w.ok ? 'awake' : 'no confirmation ' + (w.codes?.join(',') || w.err || '')}`);
+  const r = await command('/ThermalPrecond', { asap: 'activate', programs }).catch((e) => ({ ok: false, codes: [], err: e.message }));
+  await sleep(30e3);
+  const after = await carNow().catch(() => null);
+  const st = after?.ac?.status, on = /enabled|progress|running|on/i.test(st || '') && !/disabled/i.test(st || '');
+  log(`preheat: ${r.ok ? 'accepted' : 'no confirmation ' + (r.codes.join(',') || r.err || '')}, after: ${st}`);
+  if (r.ok || on) await done(true, `La voiture chauffe l'habitacle (environ 30 min${car.tempC != null ? `, ${car.tempC} °C dehors` : ''}).`, '🔥 Préchauffage lancé');
+  else await done(false, `La voiture n'a pas confirmé (codes ${r.codes.join(',') || 'aucun'}).${!car.plugged && car.level < 50 ? ' Débranchée, elle refuse souvent sous 50 %.' : ''}`, '⚠️ Préchauffage pas confirmé');
+  process.exit(r.ok || on ? 0 : 1);
+}
+console.log('Commandes : setup | check | stop | start | preheat | morning');
