@@ -229,7 +229,7 @@ const summary = cur && {
 if (summary) {
   // real consumption measured on followed trips (battery % drops), by season and kind of road
   const g = {};
-  for (const r of roadsLog.concat(drives)) {
+  for (const r of roadsLog.concat(drives.filter((d) => d.law !== false))) {
     for (const [k, km, v] of [['autoroute', r.mwKm, r.mwKwh100], ['autres', r.otherKm, r.otherKwh100]]) {
       if (v == null || !km) continue;
       const key = (r.winter ? 'hiver_' : 'ete_') + k; g[key] = g[key] || { km: 0, kwh: 0, n: 0 };
@@ -237,7 +237,7 @@ if (summary) {
     }
   }
   const ld = drives[drives.length - 1];
-  if (ld) summary.lastDrive = { at: ld.at, endAt: ld.endAt, km: ld.km, kwh100: +(ld.kwh / ld.km * 100).toFixed(1), temp: ld.temp, mwKm: ld.mwKm, mwKwh100: ld.mwKwh100, otherKm: ld.otherKm, otherKwh100: ld.otherKwh100 };
+  if (ld) summary.lastDrive = { at: ld.at, endAt: ld.endAt, km: ld.km, kwh100: +(ld.kwh / ld.km * 100).toFixed(1), temp: ld.temp, mwKm: ld.mwKm, mwKwh100: ld.mwKwh100, otherKm: ld.otherKm, otherKwh100: ld.otherKwh100, legs: ld.legs };
   summary.roads = Object.fromEntries(Object.entries(g).map(([k, x]) => [k, { kwh100: +(x.kwh / x.km * 100).toFixed(1), km: Math.round(x.km), n: x.n }]));
 }
 if (summary) {

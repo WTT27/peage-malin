@@ -106,6 +106,17 @@ function lawText(m, name) {
   const at = (T) => dec(kwhAt(m, T).toFixed(1));
   return `<p>${name} : <b>${at(15)}</b> à 15 °C · <b>${at(5)}</b> à 5 °C · <b>${at(0)}</b> à 0 °C <span class="old">(${m.km} km mesurés${m.enough ? '' : ', pas encore assez : réglages utilisés'}${m.fitted ? ', effet du froid appris' : ''})</span></p>`;
 }
+// last drive measured by the home computer (D-046): each trip between two switch-offs, and the whole drive
+function lastDriveHtml(d) {
+  if (!d) return '';
+  const hm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const split = d.mwKm ? `autoroute ${d.mwKm} km à ${dec(d.mwKwh100)}${d.otherKm ? ` · autres routes ${d.otherKm} km à ${dec(d.otherKwh100)}` : ''}` : 'sans autoroute';
+  const t = d.temp != null ? ` à ${dec(Math.round(d.temp))} °C` : '';
+  if (!d.legs) return `<p>Dernier trajet mesuré (fini ${ago(d.endAt || d.at)}) : ${dec(d.km.toFixed(0))} km, <b>${dec(d.kwh100)} kWh/100 km</b>${t} <span class="old">(${split})</span></p>`;
+  return `<p>Derniers trajets mesurés (fini ${ago(d.endAt)})${t} :</p><ul class="legs">${d.legs.map((l) =>
+    `<li>${hm(l.at)} → ${hm(l.endAt)} · ${dec(l.km.toFixed(0))} km · ${l.km < 20 ? '≈ ' : ''}${dec(l.kwh100)} kWh/100 km</li>`).join('')}</ul>
+    <p class="old">Ensemble : ${dec(d.km.toFixed(0))} km à <b>${dec(d.kwh100)} kWh/100 km</b> (${split})${d.legs.some((l) => l.km < 20) ? ' · ≈ : trajet court, chiffre approximatif' : ''}</p>`;
+}
 function renderCar() {
   const box = $('carLive'), mini = $('carMini');
   if (!carTopic()) {
@@ -119,8 +130,7 @@ function renderCar() {
     <p class="big">🔋 <b>${car.level ?? '?'} %</b>${car.kwh != null ? ` (${dec(car.kwh.toFixed(1))} kWh)` : ''}${car.charging && /progress/i.test(car.charging) ? ' · ⚡ en charge' : ''}
       · reste <b>≈ ${car.remainingKm ?? '?'} km</b> <span class="old">(à ${dec(car.rateUsed)} kWh/100 km, jusqu'à 8 %)</span></p>
     ${car.live ? `<p>Conso réelle sur les ${car.live.km} derniers km : <b>${dec(car.live.kwh100)} kWh/100 km</b></p>` : ''}
-    ${car.lastDrive ? `<p>Dernier trajet mesuré (fini ${ago(car.lastDrive.endAt || car.lastDrive.at)}) : ${dec(car.lastDrive.km.toFixed(0))} km, <b>${dec(car.lastDrive.kwh100)} kWh/100 km</b>${car.lastDrive.temp != null ? ` à ${dec(Math.round(car.lastDrive.temp))} °C` : ''}
-      <span class="old">(${car.lastDrive.mwKm ? `autoroute ${car.lastDrive.mwKm} km à ${dec(car.lastDrive.mwKwh100)}` : 'sans autoroute'}${car.lastDrive.mwKm && car.lastDrive.otherKm ? ` · autres routes ${car.lastDrive.otherKm} km à ${dec(car.lastDrive.otherKwh100)}` : ''})</span></p>` : ''}
+    ${lastDriveHtml(car.lastDrive)}
     ${car.carRange != null ? `<p class="old">La voiture annonce ${car.carRange} km${car.tempC != null ? ` · 🌡️ ${dec(car.tempC)} °C dehors` : ''}</p>` : ''}
     ${law ? `<h3>Conso selon la température (kWh/100 km)</h3>${law}
       <label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}

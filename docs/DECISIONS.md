@@ -451,3 +451,8 @@ residual-energy drops (finer than the %). Saved in drives.json (history keeps on
 law and summary.roads, except when a followed trip covers the same time (better figures: known motorway km, terrain
 correction). No terrain/wind correction for these drives: round trips cancel out. The app shows the last drive.
 Backfill on 12 Nov: 5 drives (10 and 11 Nov without temperature, so not in the law).
+Update 2: Thomas: "the last trip was actually 2 with a short pause" (his wife took the car on). The car reports every
+~2 min while on and nothing while off, so a pause > 6 min between readings (or an ignition "Stop" reading) splits a
+drive into trips ("legs"), shown in the app with their own figure (≈ under 20 km). The temperature law still uses the
+whole drive (energy adds up; fewer 1 % step errors). Drives of 3–20 km are now kept for display only (law: false).
+drives.json rebuilt from the history.
