@@ -5,7 +5,7 @@
 // Energy: the total of the drive comes from the battery % (start → end, 1 % = 0.46 kWh); it is shared between the
 // stretches in proportion to the car's finer "residual energy" figure when it moves, else to the % drops.
 // Only drives of 20 km or more are kept (the 1 % steps make shorter ones too rough).
-const GAP = 25 * 60e3, MW_KMH = 95, MIN_KM = 20;
+const GAP = 25 * 60e3, DONE = 12 * 60e3, MW_KMH = 95, MIN_KM = 20;
 
 const tOf = (p) => Date.parse(p.kmAt || p.carAt) || p.at;
 
@@ -15,7 +15,12 @@ export function findDrives(history, batteryKwh = 46, now = Date.now()) {
   let g = [];
   for (const p of pts) {
     const q = g[g.length - 1];
-    if (q && (p.at - q.at > GAP || p.level > q.level || p.km < q.km)) { groups.push(g); g = []; }
+    if (q && (p.at - q.at > GAP || p.level > q.level || p.km < q.km)) {
+      groups.push(g); g = [];
+      // the car sometimes sends its first reading a few km after leaving: start from the last parked reading
+      // (same odometer story, no charging since)
+      if (p.at - q.at > GAP && p.km - q.km > 0.05 && p.km - q.km < 30 && p.level <= q.level) g.push(q);
+    }
     g.push(p);
   }
   if (g.length) groups.push(g);
@@ -27,7 +32,9 @@ export function findDrives(history, batteryKwh = 46, now = Date.now()) {
     grp = grp.slice(i0, i1 + 1);
     if (grp.length < 3) continue;
     const a = grp[0], b = grp[grp.length - 1], km = b.km - a.km;
-    if (km < MIN_KM || now - b.at < GAP) continue;                 // too short, or maybe not finished yet
+    // shown 12 min after the last movement (the computer checks a parked car every 10 min); a drive that goes on after a
+    // shorter stop comes back longer with the same start and replaces the first figure
+    if (km < MIN_KM || now - b.at < DONE) continue;
     const kwh = (a.level - b.level) / 100 * batteryKwh;
     if (kwh <= 0) continue;
     const useRes = grp.every((p) => p.residualWh != null) && a.residualWh - b.residualWh > 0;
