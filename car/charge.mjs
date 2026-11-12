@@ -94,12 +94,14 @@ async function mqttToken(force = false) {
 }
 function parsedDay(rem) { const d = parisDate(); return rem.otpDay?.date === d ? rem.otpDay : { date: d, n: 0 }; }
 
-// one command; a "400" answer (token refused) → new token and one more try
-async function command(service, params) {
+// one command; a "400" answer (token refused) → new token and one more try.
+// Replies: 900 = taken by Peugeot, 901 = sent to the car, 903 = car awake and working on it, 0/1 = done.
+// A sleeping car (night, garage) can take 2–3 minutes to answer: wait up to `wait` s.
+async function command(service, params, wait = 180) {
   const rem = readJson('remote.json');
   for (let attempt = 0; attempt < 2; attempt++) {
     const tok = await mqttToken(attempt > 0);
-    const out = py({ cmd: 'send', token: tok, customer_id: rem.customerId, vin: rem.vin, service, params, wait: 90 });
+    const out = py({ cmd: 'send', token: tok, customer_id: rem.customerId, vin: rem.vin, service, params, wait }, wait * 1000 + 60e3);
     const end = out.find((x) => x.event === 'end') || {}, codes = end.codes || [];
     const err = out.find((x) => x.event === 'connect_error' || x.event === 'connect_refused' || x.error);
     log(service, JSON.stringify(params), '→', codes.join(',') || 'no reply', err ? JSON.stringify(err) : '');
@@ -114,6 +116,17 @@ async function carNow() {
   const ch = el.extension?.electric?.charging || {};
   const m = String(ch.nextDelayedTime || 'PT22H').match(/PT(?:(\d+)H)?(?:(\d+)M)?/) || [];
   return { ...digest(raw), program: { hour: +(m[1] || 0), minute: +(m[2] || 0) }, mode: ch.chargingMode };
+}
+// wake the car up first (asks it for its charging state): a sleeping car missed the 6:00 stop on 2026-11-12
+const wakeUp = () => command('/VehCharge/state', { action: 'state' }, 150).catch((e) => ({ ok: false, codes: [], err: e.message }));
+// state after a command: only a report sent by the car after `since` counts (the server keeps the last one it got)
+async function stateSince(since) {
+  for (let i = 0; i < 4; i++) {
+    const c = await carNow().catch(() => null);
+    if (c && Date.parse(c.carAt) >= since - 30e3) return c;
+    await sleep(30e3);
+  }
+  return null;
 }
 const stopCharge = (car) => command('/VehCharge', { program: car.program, type: 'delayed' });
 const startCharge = (car) => command('/VehCharge', { program: car.program, type: 'immediate' });
@@ -182,7 +195,7 @@ if (cmd === 'check') {
 // one command at a time (the morning job, a test in the terminal and the app buttons could otherwise overlap)
 function lock() {
   const l = readJson('charge.lock', null);
-  if (l && Date.now() - l.at < 6 * 60e3) return false;
+  if (l && Date.now() - l.at < 15 * 60e3) return false;
   writeJson('charge.lock', { at: Date.now(), cmd });
   process.on('exit', () => writeJson('charge.lock', { at: 0 }));
   return true;
@@ -202,13 +215,15 @@ if (cmd === 'stop' || cmd === 'start') {
     if (app) { done(false, 'voiture injoignable'); await alert(`⚠️ ${word} de la charge impossible`, ['Peugeot ne répond pas : ' + e.message], 4, ['warning']); }
     throw e;
   }
-  console.log(`Voiture : ${car.level} %, charge ${car.charging}, branchée ${car.plugged ? 'oui' : 'non'}, départ programmé ${hm(car.program)}. Envoi de la commande (jusqu'à 90 s)…`);
+  console.log(`Voiture : ${car.level} %, charge ${car.charging}, branchée ${car.plugged ? 'oui' : 'non'}, départ programmé ${hm(car.program)}. Réveil de la voiture puis envoi de la commande (jusqu'à 6 min)…`);
   log(`manual ${cmd}${app ? ' (app)' : ''}: car ${car.level} %, ${car.charging}, plugged ${car.plugged}`);
   if (app && !car.plugged) {
     done(false, 'voiture pas branchée');
     await alert(`🔌 ${word} de la charge : rien envoyé`, [`La voiture n'est pas branchée (${car.level} %).`], 3);
     process.exit(1);
   }
+  const w = await wakeUp();
+  log(`wake-up: ${w.ok ? 'awake' : 'no confirmation ' + (w.codes?.join(',') || w.err || '')}`);
   let r;
   try { r = await (cmd === 'stop' ? stopCharge(car) : startCharge(car)); } catch (e) { r = { ok: false, codes: [], error: e.message }; }
   console.log(r.ok ? '✅ Commande acceptée par la voiture.' : `❌ Pas de confirmation (codes ${r.codes.join(',') || 'aucun'}) ${r.error || (r.reply ? JSON.stringify(r.reply) : '')}`);
@@ -228,7 +243,7 @@ if (cmd === 'stop' || cmd === 'start') {
 }
 
 if (cmd === 'morning') {
-  for (let i = 0; i < 6 && !lock(); i++) await sleep(60e3);       // wait for a command from the app to finish
+  for (let i = 0; i < 15 && !lock(); i++) await sleep(60e3);       // wait for a command from the app to finish
   const date = parisDate(), color = await tempo(date);
   const st = readJson('state.json', {});
   const skip = st.chargeSkip === date;
@@ -251,16 +266,24 @@ if (cmd === 'morning') {
     await alert('🔌 Charge laissée en cours', [`Comme demandé : la charge continue ce matin (jour ${COLOR[color]}, batterie ${car.level} %).`], 2);
     process.exit(0);
   }
-  for (let i = 0; i < 3; i++) {
+  // up to 4 tries over ~30 min: wake the car, send the stop, check with a fresh report; a pause between tries so two
+  // requests never overlap (the third quick try of 2026-11-12 got a 502)
+  for (let i = 0; i < 4; i++) {
+    writeJson('charge.lock', { at: Date.now(), cmd });
+    if (i > 0) await sleep(120e3);
+    const w = await wakeUp();
+    log(`wake-up ${i + 1}: ${w.ok ? 'awake' : 'no confirmation ' + (w.codes?.join(',') || w.err || '')}`);
+    const t0 = Date.now();
     const r = await stopCharge(car).catch((e) => ({ ok: false, codes: [], err: e.message }));
-    await sleep(45e3);
-    const after = await carNow().catch(() => null);
-    if (after && !/progress/i.test(after.charging || '')) {
-      remember({ date, action: 'arrêtée', color, level: after.level });
-      await alert(`🔌 Charge arrêtée à ${after.level} %`, [`Jour ${COLOR[color]}${skip && red ? ' : arrêt obligatoire malgré votre demande' : ''}. Reprise automatique à ${hm(car.program)}.`], 2);
+    await sleep(30e3);
+    const after = await stateSince(t0);
+    if ((after && !/progress/i.test(after.charging || '')) || (r.ok && !after)) {
+      const lvl = after?.level ?? car.level;
+      remember({ date, action: 'arrêtée', color, level: lvl });
+      await alert(`🔌 Charge arrêtée à ${lvl} %`, [`Jour ${COLOR[color]}${skip && red ? ' : arrêt obligatoire malgré votre demande' : ''}. Reprise automatique à ${hm(car.program)}.`], 2);
       process.exit(0);
     }
-    log('still charging after attempt', i + 1, JSON.stringify(r?.codes || r?.err));
+    log('still charging after attempt', i + 1, JSON.stringify(r?.codes || r?.err), after ? 'fresh state ' + after.charging : 'no fresh state');
     car = after || car;
   }
   remember({ date, action: 'échec', color, level: car.level });

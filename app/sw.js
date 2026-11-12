@@ -1,5 +1,5 @@
 // Minimal offline cache for the app shell (routing itself needs the network)
-const CACHE = 'peage-malin-v29';
+const CACHE = 'peage-malin-v30';
 const FILES = ['./', 'index.html', 'css/app.css', 'js/app.js', 'js/geo.js', 'js/tolls.js', 'js/optimizer.js',
   'js/services.js', 'js/charging.js', 'js/enroute.js', 'js/temp.js', 'js/terrain.js', 'data/tolls.json', 'data/chargers.json', 'icon.svg', 'manifest.webmanifest'];
 // a new version takes over at once (no mix of old and new files)

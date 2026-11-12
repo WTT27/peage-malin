@@ -421,3 +421,14 @@ quand la voiture a chargé" (usualPct, default 100); the form value is for one s
 a departure within the hour, the usual level if the car is plugged in or the departure is > 12 h away, else the car's
 level (the line above the field says which). The charging plan also tries, at each charger, charging above 80–85 % (up to
 100 %, slow) and keeps it when the whole plan is better. Result for 12 Nov 7:18 at 100 %: all motorway, 2 stops, 6 h 13.
+
+## D-044 — Remote commands to a sleeping car: wake up first, wait longer (2026-11-12)
+
+The 6:00 stop failed on 12 Nov: the car (asleep, charging in the garage) answered 900,901 within 90 s (taken, sent to
+the car) and no final code; the second try got 903 (car awake, working) but the 90 s were up; the third, sent at once,
+got 502. The status read after each try was the server's last report (04:54), not a new one. Also seen that night: the
+car sent only two reports (22:00, 5:54) and the "level" stayed at 31 % while the stored energy rose from 8.2 to 15.8 kWh.
+Now: each command waits up to 180 s; before a stop/start the car is woken with /VehCharge/state {action: state}
+(as psa_car_controller does); the morning job makes up to 4 tries 2 min apart, and only a report sent after the command
+counts as the result (a final "0" with no new report counts as done). Lock 15 min. The app says the % may be old while
+charging.
