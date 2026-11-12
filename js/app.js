@@ -122,7 +122,8 @@ function renderCar() {
     ${car.carRange != null ? `<p class="old">La voiture annonce ${car.carRange} km${car.tempC != null ? ` · 🌡️ ${dec(car.tempC)} °C dehors` : ''}</p>` : ''}
     ${law ? `<h3>Conso selon la température (kWh/100 km)</h3>${law}
       <label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}
-    <p class="old">Lu sur la voiture ${ago(carT)}${fresh ? '' : ' — ancien, la voiture n\'a rien envoyé depuis'}</p>`;
+    <p class="old">Lu sur la voiture ${ago(carT)}${fresh ? '' : ' — ancien, la voiture n\'a rien envoyé depuis'}</p>
+    ${car.charging && /progress/i.test(car.charging) && Date.now() - carT > 30 * 60e3 ? '<p class="old">Pendant la charge, la voiture dort et n\'envoie presque rien : le % réel est sans doute plus haut.</p>' : ''}`;
   const cb = $('evMeasured');
   if (cb) cb.onchange = () => { V.ev.useMeasured = cb.checked; saveSettings(); };
   // battery at departure: the real level for a departure within the hour; later, the usual level once charged if the
@@ -178,11 +179,11 @@ function renderCharge() {
   // start / stop now: relayed by the home computer within ~2 min, result in the ntfy app
   if (ch.active) {
     let pend = null; try { pend = JSON.parse(localStorage.getItem('chargePending') || 'null'); } catch { /* ignore */ }
-    const P = pend && Date.now() - pend.at < 6 * 60e3 ? pend : null;
+    const P = pend && Date.now() - pend.at < 12 * 60e3 ? pend : null;
     const M = ch.manual && Date.now() - ch.manual.at < 3 * 3600e3 && (!P || ch.manual.at > P.at) ? ch.manual : null;
     const hhmm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
     html += '<div class="nowbtns"><button type="button" data-a="start">▶️ Démarrer la charge</button><button type="button" data-a="stop">⏹️ Arrêter la charge</button></div>';
-    if (P && !M) html += `<p class="old">⏳ ${P.action === 'stop' ? 'Arrêt' : 'Démarrage'} demandé à ${hhmm(P.at)} : l'ordinateur l'envoie à la voiture (2 à 4 min), réponse en notification.</p>`;
+    if (P && !M) html += `<p class="old">⏳ ${P.action === 'stop' ? 'Arrêt' : 'Démarrage'} demandé à ${hhmm(P.at)} : l'ordinateur réveille la voiture et lui envoie (2 à 8 min), réponse en notification.</p>`;
     else if (M) html += `<p class="old">${M.ok ? '✅' : '⚠️'} ${M.action === 'stop' ? 'Arrêt' : 'Démarrage'} de ${hhmm(M.at)} : ${M.ok ? 'fait' : 'pas confirmé'} — ${M.msg}.</p>`;
     else if (car.plugged === false) html += '<p class="old">La voiture n\'est pas branchée (dernière info).</p>';
   }
