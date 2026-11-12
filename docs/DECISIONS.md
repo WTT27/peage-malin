@@ -440,3 +440,14 @@ Thomas asked for "launch the pre-heating" under the charge buttons. Same path as
 car and sends /ThermalPrecond {asap: 'activate', programs} with the car's own 4 pre-heating slots sent back unchanged
 (read from the status, as psa_car_controller does; empty slot = hour 34 minute 7, off). Result in the ntfy alerts and on
 the card. Drive mode and heating use while driving are not given by the Peugeot API (checked on the raw status).
+
+## D-046 — Every drive measured automatically (2026-11-12)
+
+Thomas often knows his route and does not plan it, so "Suivre ma batterie" (which needs the planned route to know the
+motorway km) misses most drives. Now car/drives.mjs finds every drive in the readings (no pause > 25 min, no charging,
+≥ 20 km). Each ~2-minute stretch above 95 km/h average counts as motorway (Thomas: country roads are limited to 90).
+Total energy from the battery % (start → end); shared between motorway and other roads in proportion to the car's
+residual-energy drops (finer than the %). Saved in drives.json (history keeps only 60 days), used in the temperature
+law and summary.roads, except when a followed trip covers the same time (better figures: known motorway km, terrain
+correction). No terrain/wind correction for these drives: round trips cancel out. The app shows the last drive.
+Backfill on 12 Nov: 5 drives (10 and 11 Nov without temperature, so not in the law).

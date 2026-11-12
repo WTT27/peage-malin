@@ -11,6 +11,7 @@ import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mj
 import { evaluate, tripTotals } from '../app/js/enroute.js';
 import { fitModel } from '../app/js/temp.js';
 import { fetchWinds } from '../app/js/terrain.js';
+import { findDrives } from './drives.mjs';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -181,8 +182,17 @@ const tempOf = (t0, t1) => {
   const ts = history.filter((p) => p.tempC != null && p.at >= t0 - 5 * 60e3 && p.at <= t1 + 5 * 60e3).map((p) => p.tempC);
   return ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : null;
 };
+// every drive of 20 km or more, measured from the readings (D-046); kept in drives.json (the history keeps 60 days).
+// A followed trip has better figures (known motorway km, terrain correction): the drive is then left out.
+const overlaps = (a0, a1, list) => list.some((r) => r.endAt && a0 < r.endAt && a1 > r.at);
+const drives = (() => {
+  const old = readJson('drives.json', []), seen = new Set(old.map((d) => d.at)), add = findDrives(history, BATTERY_KWH, now).filter((d) => !seen.has(d.at));
+  const all = old.concat(add).sort((a, b) => a.at - b.at).slice(-300);
+  if (add.length && !SHOW) { writeJson('drives.json', all); for (const d of add) log('drive measured:', JSON.stringify(d)); }
+  return all.filter((d) => !overlaps(d.at, d.endAt, roadsLog));
+})();
 const tpts = { autoroute: [], autres: [] };
-for (const r of roadsLog) {
+for (const r of roadsLog.concat(drives)) {
   if (r.temp == null) continue;
   // under 20 km the battery's 1 % steps (0.46 kWh) make a followed-trip figure too rough
   if (r.mwKwh100 != null && r.mwKm >= 20) tpts.autoroute.push({ T: r.temp, k: r.mwKwh100, km: r.mwKm });
@@ -191,7 +201,7 @@ for (const r of roadsLog) {
 for (const t of trips) {
   if (!t.wh || t.km < 5) continue;
   const t0 = Date.parse(t.start), t1 = t0 + t.sec * 1000;
-  if (roadsLog.some((r) => r.endAt && t0 < r.endAt && t1 > r.at)) continue;    // already counted as a followed trip
+  if (overlaps(t0, t1, roadsLog) || overlaps(t0, t1, drives)) continue;    // already counted as a followed trip or a drive
   const T = t.temp ?? tempOf(t0, t1);
   if (T == null) continue;
   const kind = (t.avgKmh ?? 0) >= 75 ? 'autoroute' : 'autres';
@@ -217,13 +227,15 @@ const summary = cur && {
 if (summary) {
   // real consumption measured on followed trips (battery % drops), by season and kind of road
   const g = {};
-  for (const r of readJson('roads.json', [])) {
+  for (const r of roadsLog.concat(drives)) {
     for (const [k, km, v] of [['autoroute', r.mwKm, r.mwKwh100], ['autres', r.otherKm, r.otherKwh100]]) {
       if (v == null || !km) continue;
       const key = (r.winter ? 'hiver_' : 'ete_') + k; g[key] = g[key] || { km: 0, kwh: 0, n: 0 };
       g[key].km += km; g[key].kwh += v * km / 100; g[key].n++;
     }
   }
+  const ld = drives[drives.length - 1];
+  if (ld) summary.lastDrive = { at: ld.at, km: ld.km, kwh100: +(ld.kwh / ld.km * 100).toFixed(1), temp: ld.temp, mwKm: ld.mwKm, mwKwh100: ld.mwKwh100, otherKm: ld.otherKm, otherKwh100: ld.otherKwh100 };
   summary.roads = Object.fromEntries(Object.entries(g).map(([k, x]) => [k, { kwh100: +(x.kwh / x.km * 100).toFixed(1), km: Math.round(x.km), n: x.n }]));
 }
 if (summary) {

@@ -119,6 +119,8 @@ function renderCar() {
     <p class="big">🔋 <b>${car.level ?? '?'} %</b>${car.kwh != null ? ` (${dec(car.kwh.toFixed(1))} kWh)` : ''}${car.charging && /progress/i.test(car.charging) ? ' · ⚡ en charge' : ''}
       · reste <b>≈ ${car.remainingKm ?? '?'} km</b> <span class="old">(à ${dec(car.rateUsed)} kWh/100 km, jusqu'à 8 %)</span></p>
     ${car.live ? `<p>Conso réelle sur les ${car.live.km} derniers km : <b>${dec(car.live.kwh100)} kWh/100 km</b></p>` : ''}
+    ${car.lastDrive ? `<p>Dernier trajet mesuré (${ago(car.lastDrive.at)}) : ${dec(car.lastDrive.km.toFixed(0))} km, <b>${dec(car.lastDrive.kwh100)} kWh/100 km</b>${car.lastDrive.temp != null ? ` à ${dec(Math.round(car.lastDrive.temp))} °C` : ''}
+      <span class="old">(${car.lastDrive.mwKm ? `autoroute ${car.lastDrive.mwKm} km à ${dec(car.lastDrive.mwKwh100)}` : 'sans autoroute'}${car.lastDrive.mwKm && car.lastDrive.otherKm ? ` · autres routes ${car.lastDrive.otherKm} km à ${dec(car.lastDrive.otherKwh100)}` : ''})</span></p>` : ''}
     ${car.carRange != null ? `<p class="old">La voiture annonce ${car.carRange} km${car.tempC != null ? ` · 🌡️ ${dec(car.tempC)} °C dehors` : ''}</p>` : ''}
     ${law ? `<h3>Conso selon la température (kWh/100 km)</h3>${law}
       <label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}
