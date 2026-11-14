@@ -456,3 +456,17 @@ Update 2: Thomas: "the last trip was actually 2 with a short pause" (his wife to
 drive into trips ("legs"), shown in the app with their own figure (≈ under 20 km). The temperature law still uses the
 whole drive (energy adds up; fewer 1 % step errors). Drives of 3–20 km are now kept for display only (law: false).
 drives.json rebuilt from the history.
+
+## D-047 — Three kinds of road: motorway / road / town (2026-11-14)
+
+Thomas: his daily drives are largely urban; if town driving (slow, more consuming in winter) feeds the "other roads"
+figure, long-trip plans would be too pessimistic on country roads. Now car/drives.mjs classes each ~2-minute stretch by
+its average speed: > 95 km/h motorway, 45–95 road, < 45 town (Peugeot trips: average ≥ 75 / 45–75 / < 45). The "autres"
+temperature law used by route plans learns from the 45–95 part only; a town law (ville, default cold slope 0.025,
+heating costs more per km at low speed) is fitted and shown in the app "pour info", not used by plans (a long trip has
+only a few km of town). Because the parts of a drive ≥ 20 km are shared out with the car's fine residual-energy figure,
+a part counts in the law from 10 km (followed trips: still 20 km). drives.json rebuilt from the history (backup
+drives.json.bak2). Data at the time: battery-measured, winter 2–9 °C: road 18.7, town 21.4 kWh/100 km (42 km of town,
+rough); Peugeot trip energy over 2 months (uncalibrated): town ≈ road (summer 14.3 vs 14.8, November 15.6 vs 16.6) —
+so the town penalty is not proven yet; the split will show it as km add up. The planner was not affected on the day
+(road law at 77 km, under the 150 km needed: settings still used).

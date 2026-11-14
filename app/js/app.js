@@ -101,16 +101,17 @@ $('evStart').addEventListener('input', () => { startTouched = true; });
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `il y a ${m} min` : m < 48 * 60 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`; };
 const dec = (x) => String(x).replace('.', ',');
 // consumption law vs temperature learnt on the car's trips (D-040), as one readable line per road kind
-function lawText(m, name) {
+function lawText(m, name, info) {
   if (!m) return '';
   const at = (T) => dec(kwhAt(m, T).toFixed(1));
-  return `<p>${name} : <b>${at(15)}</b> à 15 °C · <b>${at(5)}</b> à 5 °C · <b>${at(0)}</b> à 0 °C <span class="old">(${m.km} km mesurés${m.enough ? '' : ', pas encore assez : réglages utilisés'}${m.fitted ? ', effet du froid appris' : ''})</span></p>`;
+  return `<p>${name} : <b>${at(15)}</b> à 15 °C · <b>${at(5)}</b> à 5 °C · <b>${at(0)}</b> à 0 °C <span class="old">(${m.km} km mesurés${info ? `, ${info}` : m.enough ? '' : ', pas encore assez : réglages utilisés'}${m.fitted ? ', effet du froid appris' : ''})</span></p>`;
 }
 // last drive measured by the home computer (D-046): each trip between two switch-offs, and the whole drive
 function lastDriveHtml(d) {
   if (!d) return '';
   const hm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const split = d.mwKm ? `autoroute ${d.mwKm} km à ${dec(d.mwKwh100)}${d.otherKm ? ` · autres routes ${d.otherKm} km à ${dec(d.otherKwh100)}` : ''}` : 'sans autoroute';
+  const split = [['autoroute', d.mwKm, d.mwKwh100], ['route', d.otherKm, d.otherKwh100], ['ville', d.cityKm, d.cityKwh100]]
+    .filter((x) => x[1] && x[2] != null).map(([n, km, k]) => `${n} ${km} km à ${dec(k)}`).join(' · ') || 'détail par route indisponible';
   const t = d.temp != null ? ` à ${dec(Math.round(d.temp))} °C` : '';
   if (!d.legs) return `<p>Dernier trajet mesuré (fini ${ago(d.endAt || d.at)}) : ${dec(d.km.toFixed(0))} km, <b>${dec(d.kwh100)} kWh/100 km</b>${t} <span class="old">(${split})</span></p>`;
   return `<p>Derniers trajets mesurés (fini ${ago(d.endAt)})${t} :</p><ul class="legs">${d.legs.map((l) =>
@@ -125,7 +126,8 @@ function renderCar() {
   }
   if (!car) { box.innerHTML = '<p class="old">Pas encore de données de la voiture…</p>'; mini.classList.add('hidden'); return; }
   const carT = Date.parse(car.carAt) || car.at, fresh = Date.now() - carT < 12 * 3600e3;
-  const tm = car.tmodel || {}, law = lawText(tm.autoroute, 'Autoroute') + lawText(tm.autres, 'Autres routes');
+  const tm = car.tmodel || {}, law = lawText(tm.autoroute, 'Autoroute') + lawText(tm.autres, 'Route (45–95 km/h)')
+    + lawText(tm.ville, 'Ville (sous 45 km/h)', 'pour info, pas utilisé par les itinéraires');
   box.innerHTML = `
     <p class="big">🔋 <b>${car.level ?? '?'} %</b>${car.kwh != null ? ` (${dec(car.kwh.toFixed(1))} kWh)` : ''}${car.charging && /progress/i.test(car.charging) ? ' · ⚡ en charge' : ''}
       · reste <b>≈ ${car.remainingKm ?? '?'} km</b> <span class="old">(à ${dec(car.rateUsed)} kWh/100 km, jusqu'à 8 %)</span></p>

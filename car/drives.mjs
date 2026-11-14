@@ -1,11 +1,13 @@
 // Every drive measured automatically from the car's readings (D-046), no planned trip needed.
 // The car reports odometer, battery and outside temperature every ~2 minutes while driving. A drive = readings with no
-// pause longer than 25 min and no charging in between. Each 2-minute stretch with an average speed above 95 km/h counts
-// as motorway (country roads are limited to 90 km/h), the rest as other roads.
+// pause longer than 25 min and no charging in between. Each 2-minute stretch is classed by its average speed: above
+// 95 km/h = motorway (country roads are limited to 90 km/h), below 45 km/h = town (lights, traffic, roundabouts), in
+// between = other roads. Route plans learn "other roads" from the 45–95 part only, so that town driving on daily trips
+// does not bias long-trip plans (Thomas, 2026-11-14); the town figure is kept for information.
 // Energy: the total of the drive comes from the battery % (start → end, 1 % = 0.46 kWh); it is shared between the
 // stretches in proportion to the car's finer "residual energy" figure when it moves, else to the % drops.
 // Only drives of 20 km or more are kept (the 1 % steps make shorter ones too rough).
-const GAP = 25 * 60e3, DONE = 12 * 60e3, MW_KMH = 95, MIN_KM = 20, SHOW_KM = 3, OFF = 6 * 60e3;
+const GAP = 25 * 60e3, DONE = 12 * 60e3, MW_KMH = 95, CITY_KMH = 45, MIN_KM = 20, SHOW_KM = 3, OFF = 6 * 60e3;
 // Inside a drive, the separate trips ("legs"): the car reports every ~2 min while switched on and nothing while off, so
 // a pause of more than 6 min between readings (or a reading with the ignition off) = the car was switched off.
 // The legs are shown in the app; the consumption law uses the whole drive (energy adds up, and the longer the
@@ -44,13 +46,16 @@ export function findDrives(history, batteryKwh = 46, now = Date.now()) {
     const kwh = (a.level - b.level) / 100 * batteryKwh;
     if (kwh <= 0) continue;
     const useRes = grp.every((p) => p.residualWh != null) && a.residualWh - b.residualWh > 0;
-    let mwKm = 0, otKm = 0, mwW = 0, otW = 0;
+    const S = { mw: { km: 0, w: 0 }, ot: { km: 0, w: 0 }, city: { km: 0, w: 0 } };
     for (let i = 1; i < grp.length; i++) {
       const p = grp[i - 1], q = grp[i], dkm = q.km - p.km, h = (tOf(q) - tOf(p)) / 3600e3;
       const w = Math.max(0, useRes ? p.residualWh - q.residualWh : p.level - q.level);
-      if (h > 0 && dkm / Math.max(h, 1 / 60) > MW_KMH) { mwKm += dkm; mwW += w; } else { otKm += dkm; otW += w; }
+      // a stretch across a switch-off (pause) has no meaningful speed: other roads
+      const v = h > 0 && q.at - p.at <= OFF ? dkm / Math.max(h, 1 / 60) : 60;
+      const s = S[v > MW_KMH ? 'mw' : v < CITY_KMH ? 'city' : 'ot']; s.km += dkm; s.w += w;
     }
-    const share = mwW + otW > 0 ? mwW / (mwW + otW) : mwKm / km;
+    const totW = S.mw.w + S.ot.w + S.city.w, totKm = S.mw.km + S.ot.km + S.city.km;
+    const share = (s) => (totW > 0 ? s.w / totW : s.km / totKm);
     const legs = [];
     let s0 = 0;
     for (let i = 1; i <= grp.length; i++) {
@@ -68,7 +73,9 @@ export function findDrives(history, batteryKwh = 46, now = Date.now()) {
       at: startOf(grp), endAt: b.at, auto: true, km: +km.toFixed(1), kwh: +kwh.toFixed(2),
       winter: [11, 12, 1, 2, 3].includes(new Date(a.at).getMonth() + 1),
       temp: temps.length ? +(temps.reduce((x, y) => x + y, 0) / temps.length).toFixed(1) : null,
-      mwKm: Math.round(mwKm), mwKwh100: k100(kwh * share, mwKm), otherKm: Math.round(otKm), otherKwh100: k100(kwh * (1 - share), otKm),
+      mwKm: Math.round(S.mw.km), mwKwh100: k100(kwh * share(S.mw), S.mw.km),
+      otherKm: Math.round(S.ot.km), otherKwh100: k100(kwh * share(S.ot), S.ot.km),
+      cityKm: Math.round(S.city.km), cityKwh100: k100(kwh * share(S.city), S.city.km),
       law: km >= MIN_KM, legs: legs.length > 1 ? legs : undefined,
     });
   }

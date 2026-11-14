@@ -144,7 +144,8 @@ if (cur && cur.km != null) {
   const a = pts[i], km = a ? cur.km - a.km : 0, used = a ? kwhOf(a) - kwhOf(cur) : 0;
   if (km >= 8 && used > 0) live = { km: Math.round(km), kwh100: +(used / km * 100).toFixed(1), since: a.at };
 }
-// long-term figures from the trip history: winter (Nov–Mar) / summer, motorway (average ≥ 75 km/h) / other roads
+// long-term figures from the trip history: winter (Nov–Mar) / summer, motorway (average ≥ 75 km/h) / other roads /
+// town (average < 45 km/h)
 const trips = readJson('trips.json', []);
 // Peugeot's trip energy reads low on the e-208: calibrate it against the real battery drops seen in the history
 // (stretches without charging). Until 100 km have been measured, use Thomas's own figure: 15 kWh/100 km over his
@@ -166,11 +167,12 @@ let calib = null;
 const recent = trips.filter((t) => t.wh && t.km >= 1).slice(-400);
 const rawAvg = recent.reduce((x, t) => x + t.wh, 0) / 1000 / (recent.reduce((x, t) => x + t.km, 0) || 1) * 100;
 if (!calib) calib = { factor: rawAvg > 0 ? +(15 / rawAvg).toFixed(3) : 1, km: 0, source: '15 kWh/100 km' };
+const kindOf = (t) => ((t.avgKmh ?? 0) >= 75 ? 'autoroute' : (t.avgKmh ?? 0) < 45 ? 'ville' : 'autres');
 const groups = {};
 for (const t of trips) {
   if (!t.wh || t.km < 5) continue;
   const m = new Date(t.start).getMonth() + 1, season = m >= 11 || m <= 3 ? 'hiver' : 'ete';
-  const kind = (t.avgKmh ?? 0) >= 75 ? 'autoroute' : 'autres';
+  const kind = kindOf(t);
   const g = groups[`${season}_${kind}`] ||= { km: 0, kwh: 0, n: 0 };
   g.km += t.km; g.kwh += t.wh / 1000 * calib.factor; g.n++;
 }
@@ -193,12 +195,15 @@ const drives = (() => {
   if (add.length && !SHOW) { writeJson('drives.json', all); for (const d of add) log('drive measured:', JSON.stringify(d)); }
   return all.filter((d) => !overlaps(d.at, d.endAt, roadsLog));
 })();
-const tpts = { autoroute: [], autres: [] };
+const tpts = { autoroute: [], autres: [], ville: [] };
 for (const r of roadsLog.concat(drives)) {
-  if (r.temp == null) continue;
-  // under 20 km the battery's 1 % steps (0.46 kWh) make a followed-trip figure too rough
-  if (r.mwKwh100 != null && r.mwKm >= 20) tpts.autoroute.push({ T: r.temp, k: r.mwKwh100, km: r.mwKm });
-  if (r.otherKwh100 != null && r.otherKm >= 20) tpts.autres.push({ T: r.temp, k: r.otherKwh100, km: r.otherKm });
+  if (r.temp == null || r.law === false) continue;
+  // under 20 km the battery's 1 % steps (0.46 kWh) make a figure too rough; for a drive of 20 km or more, its parts
+  // are shared out with the car's finer residual-energy figure, so a part counts from 10 km (town: 5 km, info only)
+  const min = r.auto ? 10 : 20;
+  if (r.mwKwh100 != null && r.mwKm >= min) tpts.autoroute.push({ T: r.temp, k: r.mwKwh100, km: r.mwKm });
+  if (r.otherKwh100 != null && r.otherKm >= min) tpts.autres.push({ T: r.temp, k: r.otherKwh100, km: r.otherKm });
+  if (r.cityKwh100 != null && r.cityKm >= 5) tpts.ville.push({ T: r.temp, k: r.cityKwh100, km: r.cityKm });
 }
 for (const t of trips) {
   if (!t.wh || t.km < 5) continue;
@@ -206,11 +211,11 @@ for (const t of trips) {
   if (overlaps(t0, t1, roadsLog) || overlaps(t0, t1, drives)) continue;    // already counted as a followed trip or a drive
   const T = t.temp ?? tempOf(t0, t1);
   if (T == null) continue;
-  const kind = (t.avgKmh ?? 0) >= 75 ? 'autoroute' : 'autres';
+  const kind = kindOf(t);
   if (kind === 'autoroute' && calib.source !== 'mesure') continue;
   tpts[kind].push({ T, k: t.wh / 1000 * calib.factor / t.km * 100, km: t.km });
 }
-const tmodel = { autoroute: fitModel(tpts.autoroute, 'autoroute'), autres: fitModel(tpts.autres, 'autres') };
+const tmodel = { autoroute: fitModel(tpts.autoroute, 'autoroute'), autres: fitModel(tpts.autres, 'autres'), ville: fitModel(tpts.ville, 'ville') };
 const all = Object.values(groups).reduce((s, g) => ({ km: s.km + g.km, kwh: s.kwh + g.kwh }), { km: 0, kwh: 0 });
 const avg = all.km > 50 ? +(all.kwh / all.km * 100).toFixed(1) : null;
 
@@ -230,14 +235,14 @@ if (summary) {
   // real consumption measured on followed trips (battery % drops), by season and kind of road
   const g = {};
   for (const r of roadsLog.concat(drives.filter((d) => d.law !== false))) {
-    for (const [k, km, v] of [['autoroute', r.mwKm, r.mwKwh100], ['autres', r.otherKm, r.otherKwh100]]) {
+    for (const [k, km, v] of [['autoroute', r.mwKm, r.mwKwh100], ['autres', r.otherKm, r.otherKwh100], ['ville', r.cityKm, r.cityKwh100]]) {
       if (v == null || !km) continue;
       const key = (r.winter ? 'hiver_' : 'ete_') + k; g[key] = g[key] || { km: 0, kwh: 0, n: 0 };
       g[key].km += km; g[key].kwh += v * km / 100; g[key].n++;
     }
   }
   const ld = drives[drives.length - 1];
-  if (ld) summary.lastDrive = { at: ld.at, endAt: ld.endAt, km: ld.km, kwh100: +(ld.kwh / ld.km * 100).toFixed(1), temp: ld.temp, mwKm: ld.mwKm, mwKwh100: ld.mwKwh100, otherKm: ld.otherKm, otherKwh100: ld.otherKwh100, legs: ld.legs };
+  if (ld) summary.lastDrive = { at: ld.at, endAt: ld.endAt, km: ld.km, kwh100: +(ld.kwh / ld.km * 100).toFixed(1), temp: ld.temp, mwKm: ld.mwKm, mwKwh100: ld.mwKwh100, otherKm: ld.otherKm, otherKwh100: ld.otherKwh100, cityKm: ld.cityKm, cityKwh100: ld.cityKwh100, legs: ld.legs };
   summary.roads = Object.fromEntries(Object.entries(g).map(([k, x]) => [k, { kwh100: +(x.kwh / x.km * 100).toFixed(1), km: Math.round(x.km), n: x.n }]));
 }
 if (summary) {
