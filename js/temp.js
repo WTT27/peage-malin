@@ -3,8 +3,9 @@
 // ref = consumption when no heating is needed (18 °C and above), s = extra share per degree below 18 °C.
 // The car gives the outside temperature at every reading; each trip gets the average of its readings.
 export const TREF = 18;
-export const DEFAULT_S = { autoroute: 0.0085, autres: 0.015 };   // motorway: 18 → 20 kWh/100 km at 5 °C (Thomas's settings)
-const MIN_KM = { autoroute: 100, autres: 150 };                   // measured km before the measured ref replaces the settings
+// motorway: 18 → 20 kWh/100 km at 5 °C (Thomas's settings); town: heating costs more per km at low speed
+export const DEFAULT_S = { autoroute: 0.0085, autres: 0.015, ville: 0.025 };
+const MIN_KM = { autoroute: 100, autres: 150, ville: 100 };                   // measured km before the measured ref replaces the settings
 
 export const factor = (T, s) => 1 + s * Math.max(0, TREF - T);
 export const kwhAt = (m, T) => m.ref * factor(T, m.s);
