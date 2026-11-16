@@ -189,7 +189,7 @@ const tempOf = (t0, t1) => {
 const overlaps = (a0, a1, list) => list.some((r) => r.endAt && a0 < r.endAt && a1 > r.at);
 const drives = (() => {
   const old = readJson('drives.json', []), byAt = new Map(old.map((d) => [d.at, d]));
-  const add = findDrives(history, BATTERY_KWH, now).filter((d) => !byAt.has(d.at) || d.endAt > byAt.get(d.at).endAt);
+  const add = findDrives(history, BATTERY_KWH, now, trips).filter((d) => !byAt.has(d.at) || d.endAt > byAt.get(d.at).endAt);
   for (const d of add) byAt.set(d.at, d);
   const all = [...byAt.values()].sort((a, b) => a.at - b.at).slice(-300);
   if (add.length && !SHOW) { writeJson('drives.json', all); for (const d of add) log('drive measured:', JSON.stringify(d)); }
@@ -242,7 +242,7 @@ if (summary) {
     }
   }
   const ld = drives[drives.length - 1];
-  if (ld) summary.lastDrive = { at: ld.at, endAt: ld.endAt, km: ld.km, kwh100: +(ld.kwh / ld.km * 100).toFixed(1), temp: ld.temp, mwKm: ld.mwKm, mwKwh100: ld.mwKwh100, otherKm: ld.otherKm, otherKwh100: ld.otherKwh100, cityKm: ld.cityKm, cityKwh100: ld.cityKwh100, legs: ld.legs };
+  if (ld) summary.lastDrive = { at: ld.at, endAt: ld.endAt, km: ld.km, kwh100: +(ld.kwh / ld.km * 100).toFixed(1), temp: ld.temp, mwKm: ld.mwKm, mwKwh100: ld.mwKwh100, otherKm: ld.otherKm, otherKwh100: ld.otherKwh100, cityKm: ld.cityKm, cityKwh100: ld.cityKwh100, legs: ld.legs, unseen: ld.unseen };
   summary.roads = Object.fromEntries(Object.entries(g).map(([k, x]) => [k, { kwh100: +(x.kwh / x.km * 100).toFixed(1), km: Math.round(x.km), n: x.n }]));
 }
 if (summary) {

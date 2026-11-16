@@ -17,7 +17,7 @@ const GAP = 25 * 60e3, DONE = 12 * 60e3, MW_KMH = 95, CITY_KMH = 45, MIN_KM = 20
 const startOf = (L) => (L.length > 1 && L[1].at - L[0].at > OFF ? L[1].at - 120e3 : L[0].at);
 const tOf = (p) => Date.parse(p.kmAt || p.carAt) || p.at;
 
-export function findDrives(history, batteryKwh = 46, now = Date.now()) {
+export function findDrives(history, batteryKwh = 46, now = Date.now(), trips = []) {
   const pts = history.filter((p) => p.km != null && p.level != null).sort((a, b) => a.at - b.at);
   const groups = [];
   let g = [];
@@ -76,6 +76,51 @@ export function findDrives(history, batteryKwh = 46, now = Date.now()) {
       mwKm: Math.round(S.mw.km), mwKwh100: k100(kwh * share(S.mw), S.mw.km),
       otherKm: Math.round(S.ot.km), otherKwh100: k100(kwh * share(S.ot), S.ot.km),
       cityKm: Math.round(S.city.km), cityKwh100: k100(kwh * share(S.city), S.city.km),
+      law: km >= MIN_KM, legs: legs.length > 1 ? legs : undefined,
+    });
+  }
+  return out.concat(unseenDrives(pts, batteryKwh, now, trips));
+}
+
+// Drives nobody watched (computer off, Peugeot server down): the last reading before the gap and the first one after
+// show the km and battery used; the car's own trip records (kept by Peugeot) give when, the separate trips and the kind
+// of road (average speed ≥ 75 km/h = motorway, < 45 = town, else other roads, as for the trip statistics). The energy
+// comes from the battery % and is shared between the trips in proportion to the car's trip energy figures.
+// Live alerts during such a drive are lost for good: the car keeps no battery log.
+const UNSEEN_MAX_KM = 400, TRIP_MW = 75;
+function unseenDrives(pts, batteryKwh, now, trips) {
+  const out = [];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], km = b.km - a.km;
+    if (b.at - a.at <= GAP || km < SHOW_KM || km > UNSEEN_MAX_KM || b.level > a.level) continue;
+    // readings resume while the car is still moving: the normal measurement already starts from the parked reading
+    if (km < 30 && pts[i + 1] && pts[i + 1].at - b.at <= GAP && pts[i + 1].km - b.km >= 0.05) continue;
+    const t0 = tOf(a), t1 = tOf(b);
+    const ts = trips.filter((t) => t.startKm != null && t.km > 0 && t.startKm >= a.km - 0.5 && t.startKm + t.km <= b.km + 0.5
+      && Date.parse(t.start) >= t0 - 60e3 && Date.parse(t.start) <= t1).sort((x, y) => Date.parse(x.start) - Date.parse(y.start));
+    const tkm = ts.reduce((x, t) => x + t.km, 0);
+    // trips not synced yet (next time), or the gap began mid-trip (that trip started before the gap: left out)
+    if (!ts.length || tkm < 0.8 * km) continue;
+    const kwh = (a.level - b.level) / 100 * batteryKwh;
+    if (kwh <= 0 || now - t1 < DONE) continue;
+    const byWh = ts.every((t) => t.wh > 0), tot = ts.reduce((x, t) => x + (byWh ? t.wh : t.km), 0);
+    const S = { mw: { km: 0, e: 0 }, ot: { km: 0, e: 0 }, city: { km: 0, e: 0 } };
+    const legs = ts.map((t) => {
+      const e = kwh * (byWh ? t.wh : t.km) / tot, v = t.avgKmh ?? (t.sec ? t.km / (t.sec / 3600) : 60);
+      const s = S[v >= TRIP_MW ? 'mw' : v < CITY_KMH ? 'city' : 'ot']; s.km += t.km; s.e += e;
+      const at = Date.parse(t.start);
+      return { at, endAt: at + (t.sec || 0) * 1000, km: +t.km.toFixed(1), kwh100: +(e / t.km * 100).toFixed(1) };
+    });
+    // the drive's km come from the odometer; the trips' km are spread over it
+    const f = km / tkm;
+    const k100 = (s) => (s.km > 0 ? +(s.e / (s.km * f) * 100).toFixed(1) : null);
+    const temps = [a.tempC, b.tempC, ...ts.map((t) => t.temp)].filter((x) => x != null);
+    out.push({
+      at: legs[0].at - 120e3, endAt: t1, auto: true, unseen: true, km: +km.toFixed(1), kwh: +kwh.toFixed(2),
+      winter: [11, 12, 1, 2, 3].includes(new Date(legs[0].at).getMonth() + 1),
+      temp: temps.length ? +(temps.reduce((x, y) => x + y, 0) / temps.length).toFixed(1) : null,
+      mwKm: Math.round(S.mw.km * f), mwKwh100: k100(S.mw), otherKm: Math.round(S.ot.km * f), otherKwh100: k100(S.ot),
+      cityKm: Math.round(S.city.km * f), cityKwh100: k100(S.city),
       law: km >= MIN_KM, legs: legs.length > 1 ? legs : undefined,
     });
   }

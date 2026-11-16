@@ -470,3 +470,15 @@ drives.json.bak2). Data at the time: battery-measured, winter 2–9 °C: road 18
 rough); Peugeot trip energy over 2 months (uncalibrated): town ≈ road (summer 14.3 vs 14.8, November 15.6 vs 16.6) —
 so the town penalty is not proven yet; the split will show it as km add up. The planner was not affected on the day
 (road law at 77 km, under the 150 km needed: settings still used).
+
+## D-048 — Drives made while the computer was off are rebuilt (2026-11-16)
+
+The car keeps no battery log: only the computer's 2-minute readings exist, so a drive made while it is off (power cut
+on 2026-11-16 ~15:00 → 19:46) cannot be replayed and its live alerts are lost. What can be recovered: the last reading
+before the gap + the first after (km, battery %) and Peugeot's trip records (times, km, avg speed, energy).
+`unseenDrives()` in car/drives.mjs builds the drive from those (gap > 25 min, ≥ 3 km, ≤ 400 km, no charge, trips
+covering ≥ 80 % of the km, trips starting after the gap); road kind per trip by average speed (≥ 75 motorway, < 45
+town, as the trip statistics); energy from the % shared by the trips' energy figures. Marked `unseen`, the app says
+"Ordinateur éteint… chiffres reconstitués". A followed trip with no reading at all is no longer saved as an empty
+roads.json entry (it hid the car's trips of that drive from the temperature law). First case: 16 Nov evening,
+24.9 km, 90→80 %, 18.5 kWh/100 km at 10 °C, other roads.
