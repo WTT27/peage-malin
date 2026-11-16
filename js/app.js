@@ -113,8 +113,10 @@ function lastDriveHtml(d) {
   const split = [['autoroute', d.mwKm, d.mwKwh100], ['route', d.otherKm, d.otherKwh100], ['ville', d.cityKm, d.cityKwh100]]
     .filter((x) => x[1] && x[2] != null).map(([n, km, k]) => `${n} ${km} km à ${dec(k)}`).join(' · ') || 'détail par route indisponible';
   const t = d.temp != null ? ` à ${dec(Math.round(d.temp))} °C` : '';
-  if (!d.legs) return `<p>Dernier trajet mesuré (fini ${ago(d.endAt || d.at)}) : ${dec(d.km.toFixed(0))} km, <b>${dec(d.kwh100)} kWh/100 km</b>${t} <span class="old">(${split})</span></p>`;
-  return `<p>Derniers trajets mesurés (fini ${ago(d.endAt)})${t} :</p><ul class="legs">${d.legs.map((l) =>
+  // drive made while the home computer (or Peugeot) was off: rebuilt from the car's own trip records
+  const note = d.unseen ? '<p class="old">Ordinateur éteint pendant ce trajet : chiffres reconstitués avec l’historique de la voiture (pas d’alerte en route).</p>' : '';
+  if (!d.legs) return note + `<p>Dernier trajet mesuré (fini ${ago(d.endAt || d.at)}) : ${dec(d.km.toFixed(0))} km, <b>${dec(d.kwh100)} kWh/100 km</b>${t} <span class="old">(${split})</span></p>`;
+  return note + `<p>Derniers trajets mesurés (fini ${ago(d.endAt)})${t} :</p><ul class="legs">${d.legs.map((l) =>
     `<li>${hm(l.at)} → ${hm(l.endAt)} · ${dec(l.km.toFixed(0))} km · ${l.km < 20 ? '≈ ' : ''}${dec(l.kwh100)} kWh/100 km</li>`).join('')}</ul>
     <p class="old">Ensemble : ${dec(d.km.toFixed(0))} km à <b>${dec(d.kwh100)} kWh/100 km</b> (${split})${d.legs.some((l) => l.km < 20) ? ' · ≈ : trajet court, chiffre approximatif' : ''}</p>`;
 }
