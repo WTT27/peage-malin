@@ -308,10 +308,14 @@ if (trip && !trip.active && !trip.saved && !SHOW) {
   const m = new Date(trip.startAt).getMonth() + 1;
   const temps = pts.filter((p) => p.tempC != null).map((p) => p.tempC);      // ('moving' is always false on this car)
   const temp = temps.length ? +(temps.reduce((a, b) => a + b, 0) / temps.length).toFixed(1) : null;
-  log2.push({ at: trip.startAt, endAt: end, winter: m >= 11 || m <= 3, temp, ...tt });
-  writeJson('roads.json', log2.slice(-40));
+  // no readings during the trip (computer off, car silent): nothing measured; an empty entry would only hide the car's
+  // own trip records of that drive from the temperature law
+  if ((tt.mwKm || 0) + (tt.otherKm || 0) > 0) {
+    log2.push({ at: trip.startAt, endAt: end, winter: m >= 11 || m <= 3, temp, ...tt });
+    writeJson('roads.json', log2.slice(-40));
+    log('trip measured:', JSON.stringify(tt));
+  } else log('trip not measured (no car readings during it)');
   trip.saved = true;
-  log('trip measured:', JSON.stringify(tt));
 }
 if (trip && !SHOW) writeJson('trip.json', trip);
 
