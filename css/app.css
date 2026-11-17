@@ -116,6 +116,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .45); }
 
 /* "En route" battery check (D-037) */
 .enroute { border-left: 6px solid var(--good); }
+.enroute.idle { border-left: 1px solid var(--line); }
+.enroute.idle > button { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--line); font-size: 1rem; }
 .enroute.juste { border-left-color: var(--best); }
 .enroute.non { border-left-color: var(--bad); }
 .enroute h2 { margin: 0 0 6px; font-size: 1.15rem; }

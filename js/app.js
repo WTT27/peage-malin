@@ -3,7 +3,7 @@ import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 import { mergeStops, routeStations, evParams } from './charging.js';
-import { tripTemp, planRates, kwhAt } from './temp.js';
+import { tripTemp, planRates, kwhAt, usualTemp } from './temp.js';
 import { fetchWinds, buildTerrain } from './terrain.js';
 import { buildProfile, evaluate } from './enroute.js';
 
@@ -271,6 +271,15 @@ function profileOf(e) {
   }
   return prof;
 }
+// free follow-up: one button, no route (2026-11-17). Expected consumption per kind of road at the outside temperature
+// read on the car (learnt laws when measured, else the settings), the town law for town km.
+function freeProfile() {
+  const T = car?.tempC ?? usualTemp(new Date()), model = V.ev.useMeasured !== false ? car?.tmodel : null;
+  const rr = planRates(V.ev, T, model), P = evParams(V.ev, new Date(), 3600);
+  const kC = model?.ville?.enough ? +kwhAt(model.ville, T).toFixed(1) : +(rr.kO * 1.1).toFixed(1);
+  return { v: 1, free: true, label: 'Suivi sans itinéraire', batt: P.batt, reserve: Math.round(P.reserve * 100),
+    target: Math.round(P.target * 100), kM: rr.kM, kO: rr.kO, kC };
+}
 async function startTrip(profile) {
   if (!carTopic()) { alert('Reliez d\'abord la voiture (Réglages ⚙︎).'); return; }
   if (!car || car.odometer == null) { alert('Pas encore de données de la voiture : réessayez dans quelques minutes.'); return; }
@@ -301,6 +310,13 @@ function renderEnroute() {
   clearInterval(enrouteTimer); enrouteTimer = null;
   const dot = $('tabDot');
   dot.className = 'dot hidden';
+  if (!t && car && carTopic()) {
+    box.className = 'card enroute idle';
+    box.innerHTML = '<button type="button" data-a="free" class="follow">🔋 Suivre ma batterie (sans itinéraire)</button>'
+      + '<p class="old">Pour un trajet sans le préparer : autonomie, conso et vitesse moyenne pendant le trajet, alertes si la batterie baisse. S\'arrête tout seul après 30 min à l\'arrêt (sauf en charge).</p>';
+    box.querySelector('[data-a=free]').onclick = () => startTrip(freeProfile());
+    return;
+  }
   if (!t || !car) { box.classList.add('hidden'); return; }
   // the home computer's check (uses every reading since departure); else the same check from the phone's last reading
   const home = car.enroute && car.enroute.id === t.id ? car.enroute : null;
