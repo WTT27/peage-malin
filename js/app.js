@@ -3,7 +3,8 @@ import { analyse, ladder, googleMapsUrl, DEFAULT_VEHICLES, checkTrip, prettyName
 import { geocode, getKey, setKey, dieselPrice, stats } from './services.js';
 import { hm, eur } from './geo.js';
 import { mergeStops, routeStations, evParams } from './charging.js';
-import { tripTemp, planRates, kwhAt, usualTemp } from './temp.js';
+import { tripTemp, usualTemp } from './temp.js';
+import { planRates, lawFor, usualSpeeds, kwh100 } from './law.js';
 import { fetchWinds, buildTerrain } from './terrain.js';
 import { buildProfile, evaluate } from './enroute.js';
 
@@ -100,11 +101,18 @@ let car = (() => { try { return JSON.parse(localStorage.getItem('carLast') || 'n
 $('evStart').addEventListener('input', () => { startTouched = true; });
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 60 ? `il y a ${m} min` : m < 48 * 60 ? `il y a ${Math.round(m / 60)} h` : `il y a ${Math.round(m / 1440)} j`; };
 const dec = (x) => String(x).replace('.', ',');
-// consumption law vs temperature learnt on the car's trips (D-040), as one readable line per road kind
-function lawText(m, name, info) {
-  if (!m) return '';
-  const at = (T) => dec(kwhAt(m, T).toFixed(1));
-  return `<p>${name} : <b>${at(15)}</b> à 15 °C · <b>${at(5)}</b> à 5 °C · <b>${at(0)}</b> à 0 °C <span class="old">(${m.km} km mesurés${info ? `, ${info}` : m.enough ? '' : ', pas encore assez : réglages utilisés'}${m.fitted ? ', effet du froid appris' : ''})</span></p>`;
+// consumption law vs speed and temperature (D-050), as a small table
+function lawHtml() {
+  const L = lawFor(V.ev, car?.law), { vM, vO } = usualSpeeds(V.ev, car?.law), cl = car?.law;
+  const speeds = [30, 50, 70, 90, 110, 130], temps = [15, 5, 0];
+  const cell = (v, T) => dec(kwh100(L, v, T).toFixed(1));
+  const info = L.src === 'mesurée' ? `mesurée sur ${cl.km} km entre ${cl.tmin} et ${cl.tmax} °C, dont ${cl.kmFast} km au-dessus de 95 km/h`
+    : cl?.km ? `${cl.km} km mesurés, il en faut 150 : réglages utilisés` : 'réglages, pas encore de mesure';
+  return `<h3>Conso selon la vitesse et la température (kWh/100 km)</h3>
+    <table class="law"><tr><th></th>${temps.map((T) => `<th>${T} °C</th>`).join('')}</tr>
+    ${speeds.map((v) => `<tr><th>${v} km/h</th>${temps.map((T) => `<td>${cell(v, T)}</td>`).join('')}</tr>`).join('')}</table>
+    <p class="old">${info}. Vitesses habituelles : autoroute ${vM} km/h, autres routes ${vO} km/h${cl?.vM ? ' (mesurées)' : ''}.
+      Le chauffage pèse plus par km en roulant lentement ; la résistance de l'air grandit avec le carré de la vitesse.</p>`;
 }
 // last drive measured by the home computer (D-046): each trip between two switch-offs, and the whole drive
 function lastDriveHtml(d) {
@@ -128,20 +136,18 @@ function renderCar() {
   }
   if (!car) { box.innerHTML = '<p class="old">Pas encore de données de la voiture…</p>'; mini.classList.add('hidden'); return; }
   const carT = Date.parse(car.carAt) || car.at, fresh = Date.now() - carT < 12 * 3600e3;
-  const tm = car.tmodel || {}, law = lawText(tm.autoroute, 'Autoroute') + lawText(tm.autres, 'Route (45–95 km/h)')
-    + lawText(tm.ville, 'Ville (sous 45 km/h)', 'pour info, pas utilisé par les itinéraires');
   box.innerHTML = `
     <p class="big">🔋 <b>${car.level ?? '?'} %</b>${car.kwh != null ? ` (${dec(car.kwh.toFixed(1))} kWh)` : ''}${car.charging && /progress/i.test(car.charging) ? ' · ⚡ en charge' : ''}
       · reste <b>≈ ${car.remainingKm ?? '?'} km</b> <span class="old">(à ${dec(car.rateUsed)} kWh/100 km, jusqu'à 8 %)</span></p>
     ${car.live ? `<p>Conso réelle sur les ${car.live.km} derniers km : <b>${dec(car.live.kwh100)} kWh/100 km</b></p>` : ''}
     ${lastDriveHtml(car.lastDrive)}
     ${car.carRange != null ? `<p class="old">La voiture annonce ${car.carRange} km${car.tempC != null ? ` · 🌡️ ${dec(car.tempC)} °C dehors` : ''}</p>` : ''}
-    ${law ? `<h3>Conso selon la température (kWh/100 km)</h3>${law}
-      <label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}
+    ${lawHtml()}
+      ${car.law ? `<label class="tick"><input id="evMeasured" type="checkbox" ${V.ev.useMeasured === false ? '' : 'checked'}> Utiliser ma conso mesurée pour les calculs</label>` : ''}
     <p class="old">Lu sur la voiture ${ago(carT)}${fresh ? '' : ' — ancien, la voiture n\'a rien envoyé depuis'}</p>
     ${car.charging && /progress/i.test(car.charging) && Date.now() - carT > 30 * 60e3 ? '<p class="old">Pendant la charge, la voiture dort et n\'envoie presque rien : le % réel est sans doute plus haut.</p>' : ''}`;
   const cb = $('evMeasured');
-  if (cb) cb.onchange = () => { V.ev.useMeasured = cb.checked; saveSettings(); };
+  if (cb) cb.onchange = () => { V.ev.useMeasured = cb.checked; saveSettings(); renderCar(); };
   // battery at departure: the real level for a departure within the hour; later, the usual level once charged if the
   // car is plugged in (or the departure is more than 12 h away), else the real level
   let src = '';
@@ -267,6 +273,7 @@ function profileOf(e) {
   for (const [keep, tPts] of [[1, 100], [2, 100], [2, 60], [3, 60], [4, 40], [4, 25]]) {
     prof = buildProfile({ line: e.line, mw: e.lineMw, routeKm: e.km, plan: e.charge, stations: stations.filter((_, i) => i % keep === 0), P,
       label: `${r.fromLabel} → ${r.toLabel}`, terrain: e.terrain, winds: e.winds, tPts });
+    if (r.v.tempInfo) Object.assign(prof, { law: r.v.tempInfo.law, T: r.v.tempInfo.T, vM: r.v.tempInfo.vM });     // speed advice (D-050)
     if (JSON.stringify(prof).length < 3300) break;
   }
   return prof;
@@ -274,11 +281,11 @@ function profileOf(e) {
 // free follow-up: one button, no route (2026-11-17). Expected consumption per kind of road at the outside temperature
 // read on the car (learnt laws when measured, else the settings), the town law for town km.
 function freeProfile() {
-  const T = car?.tempC ?? usualTemp(new Date()), model = V.ev.useMeasured !== false ? car?.tmodel : null;
-  const rr = planRates(V.ev, T, model), P = evParams(V.ev, new Date(), 3600);
-  const kC = model?.ville?.enough ? +kwhAt(model.ville, T).toFixed(1) : +(rr.kO * 1.1).toFixed(1);
+  const T = car?.tempC ?? usualTemp(new Date());
+  const rr = planRates(V.ev, T, car?.law), P = evParams(V.ev, new Date(), 3600);
+  const kC = +kwh100(rr.law, 30, T).toFixed(1);
   return { v: 1, free: true, label: 'Suivi sans itinéraire', batt: P.batt, reserve: Math.round(P.reserve * 100),
-    target: Math.round(P.target * 100), kM: rr.kM, kO: rr.kO, kC };
+    target: Math.round(P.target * 100), kM: rr.kM, kO: rr.kO, kC, law: rr.law, T, vM: rr.vM };
 }
 async function startTrip(profile) {
   if (!carTopic()) { alert('Reliez d\'abord la voiture (Réglages ⚙︎).'); return; }
@@ -547,7 +554,7 @@ $('form').addEventListener('submit', async (ev) => {
     const depart = $('when').value ? new Date($('when').value) : new Date();
     if (v.type === 'ev') {
       const tt = await tripTemp(o, d, depart);
-      const rr = planRates(v, tt.T, v.useMeasured !== false ? car?.tmodel : null);
+      const rr = planRates(v, tt.T, car?.law);
       v.kwhMotorway = v.kwhMotorwayWinter = rr.kM; v.kwhOther = rr.kO;
       v.tempInfo = { ...tt, ...rr };
     }
@@ -667,7 +674,7 @@ function render() {
     ${state.result.motorway ? `<p class="hint">${f0.isRef ? '' : `C'est « ${escapeHtml(f0.label)} ». `}Le tout-autoroute roule plus vite mais met ${hm(state.result.motorway.min)}${state.result.motorway.stops ? ` avec ${state.result.motorway.stops} recharges` : ''} : les bornes y sont moins bien placées.</p>` : ''}
     <p class="hint" style="margin-top:0">dont péages ${eur(f0.toll)}, ${state.result.v.type === 'ev' ? 'électricité' : 'gazole'} ${eur(f0.energy)}</p>
     ${state.result.v.tempInfo ? (() => { const ti = state.result.v.tempInfo, c = (x) => String(x).replace('.', ',');
-      return `<p class="hint">🌡️ ${ti.T} °C (${ti.src}) → conso autoroute ${c(ti.kM)} kWh/100 km (${ti.srcM}), autres routes ${c(ti.kO)} (${ti.srcO})</p>`; })() : ''}
+      return `<p class="hint">🌡️ ${ti.T} °C (${ti.src}) → conso autoroute ${c(ti.kM)} kWh/100 km à ${ti.vM} km/h, autres routes ${c(ti.kO)} à ${ti.vO} km/h (loi ${ti.src})</p>`; })() : ''}
     <p>Économie maximale possible : <b>${eur(f0.cost - cheapest.cost)}</b> pour <b>+${Math.round(cheapest.min - f0.min)} min</b> (${escapeHtml(cheapest.label)}).</p>
     ${wins.length ? `<p>🟢 <b>Gain gratuit :</b> ${escapeHtml(wins[0].label)} — <b>−${eur(wins[0].save)}</b> pour ${Math.round(wins[0].dMin) <= 0 ? 'la même durée' : '+' + Math.round(wins[0].dMin) + ' min'}.</p>` : ''}
     ${best ? `<p>⭐ <b>Meilleur compromis :</b> ${escapeHtml(best.label)} — <b>−${eur(best.save)}</b> pour <b>+${Math.round(best.dMin)} min</b> (${Math.round(best.pSave * 100)} % de l'économie possible pour ${Math.round(best.pTime * 100)} % du temps en plus), ${splitText(best, state.result.vehKey)}.</p>` : ''}`;

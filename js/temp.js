@@ -1,33 +1,5 @@
-// Consumption vs outside temperature (D-040), shared by the phone (route plans) and the home computer (fit on real data).
-//   kWh/100 km at T = ref × (1 + s × max(0, 18 − T))
-// ref = consumption when no heating is needed (18 °C and above), s = extra share per degree below 18 °C.
-// The car gives the outside temperature at every reading; each trip gets the average of its readings.
-export const TREF = 18;
-// motorway: 18 → 20 kWh/100 km at 5 °C (Thomas's settings); town: heating costs more per km at low speed
-export const DEFAULT_S = { autoroute: 0.0085, autres: 0.015, ville: 0.025 };
-const MIN_KM = { autoroute: 100, autres: 150, ville: 100 };                   // measured km before the measured ref replaces the settings
-
-export const factor = (T, s) => 1 + s * Math.max(0, TREF - T);
-export const kwhAt = (m, T) => m.ref * factor(T, m.s);
-
-// points: [{T, k (kWh/100 km), km}] → {ref, s, km, n, fitted, tmin, tmax} or null
-export function fitModel(points, kind) {
-  const pts = points.filter((p) => p.T != null && p.k > 3 && p.k < 60 && p.km > 0);
-  const km = pts.reduce((a, p) => a + p.km, 0);
-  if (!pts.length) return null;
-  const refFor = (s) => pts.reduce((a, p) => a + p.km * p.k / factor(p.T, s), 0) / km;
-  const err = (s) => { const r = refFor(s); return pts.reduce((a, p) => a + p.km * (p.k - r * factor(p.T, s)) ** 2, 0); };
-  const tmin = Math.min(...pts.map((p) => p.T)), tmax = Math.max(...pts.map((p) => p.T));
-  // the slope is learnt only with enough spread of temperatures below 18 °C and enough km; otherwise the default
-  let s = DEFAULT_S[kind], fitted = false;
-  if (Math.min(tmax, TREF) - tmin >= 8 && km >= 2 * MIN_KM[kind] && pts.length >= 5) {
-    let best = Infinity;
-    for (let x = 0; x <= 0.04 + 1e-9; x += 0.0005) { const e = err(x); if (e < best) { best = e; s = x; } }
-    fitted = true;
-  }
-  return { ref: +refFor(s).toFixed(2), s: +s.toFixed(4), km: Math.round(km), n: pts.length, fitted, enough: km >= MIN_KM[kind],
-    tmin: Math.round(tmin), tmax: Math.round(tmax) };
-}
+// Outside temperature for a trip (D-040): forecast or the month's usual figure. The consumption law that uses it
+// (speed + temperature) is in law.js (D-050).
 
 // usual temperature (°C, daytime) by month in northern France, when no forecast is available
 const CLIMATE = [5, 6, 9, 12, 16, 19, 22, 22, 18, 14, 9, 6];
@@ -50,14 +22,4 @@ export async function tripTemp(o, d, depart) {
     } catch { /* offline: usual temperature */ }
   }
   return { T: usualTemp(depart), src: 'moyenne du mois' };
-}
-
-// consumption used by a route plan at temperature T: the measured law when enough km, else the settings
-// (motorway setting = summer value at 18 °C and above; other roads setting = average figure, taken at 12 °C)
-export function planRates(v, T, model) {
-  const sM = v.kwhMotorwayWinter > v.kwhMotorway ? (v.kwhMotorwayWinter / v.kwhMotorway - 1) / (TREF - 5) : DEFAULT_S.autoroute;
-  const mw = model?.autoroute?.enough ? { ...model.autoroute, src: 'mesurée' } : { ref: v.kwhMotorway, s: sM, src: 'réglages' };
-  const ot = model?.autres?.enough ? { ...model.autres, src: 'mesurée' }
-    : { ref: v.kwhOther / factor(12, DEFAULT_S.autres), s: DEFAULT_S.autres, src: 'réglages' };
-  return { kM: +kwhAt(mw, T).toFixed(1), kO: +kwhAt(ot, T).toFixed(1), srcM: mw.src, srcO: ot.src };
 }
