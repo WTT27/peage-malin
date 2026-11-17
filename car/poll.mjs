@@ -9,9 +9,9 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mjs';
 import { evaluate, tripTotals } from '../app/js/enroute.js';
-import { fitModel } from '../app/js/temp.js';
+import { fitLaw, priorLaw, groupStretches } from '../app/js/law.js';
 import { fetchWinds } from '../app/js/terrain.js';
-import { findDrives } from './drives.mjs';
+import { findDrives, stretchesOf } from './drives.mjs';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -180,10 +180,6 @@ const stats = Object.fromEntries(Object.entries(groups).map(([k, g]) => [k, { kw
 // consumption vs outside temperature (D-040): followed trips (battery drops on known motorway km) + Peugeot trips
 // (calibrated energy, motorway only once the calibration is measured), each with the temperature read during it
 const roadsLog = readJson('roads.json', []);
-const tempOf = (t0, t1) => {
-  const ts = history.filter((p) => p.tempC != null && p.at >= t0 - 5 * 60e3 && p.at <= t1 + 5 * 60e3).map((p) => p.tempC);
-  return ts.length ? ts.reduce((a, b) => a + b, 0) / ts.length : null;
-};
 // every drive of 20 km or more, measured from the readings (D-046); kept in drives.json (the history keeps 60 days).
 // A followed trip has better figures (known motorway km, terrain correction): the drive is then left out.
 const overlaps = (a0, a1, list) => list.some((r) => r.endAt && a0 < r.endAt && a1 > r.at);
@@ -195,27 +191,32 @@ const drives = (() => {
   if (add.length && !SHOW) { writeJson('drives.json', all); for (const d of add) log('drive measured:', JSON.stringify(d)); }
   return all.filter((d) => !overlaps(d.at, d.endAt, roadsLog));
 })();
-const tpts = { autoroute: [], autres: [], ville: [] };
-for (const r of roadsLog.concat(drives)) {
-  if (r.temp == null || r.law === false) continue;
-  // under 20 km the battery's 1 % steps (0.46 kWh) make a figure too rough; for a drive of 20 km or more, its parts
-  // are shared out with the car's finer residual-energy figure, so a part counts from 10 km (town: 5 km, info only)
-  const min = r.auto ? 10 : 20;
-  if (r.mwKwh100 != null && r.mwKm >= min) tpts.autoroute.push({ T: r.temp, k: r.mwKwh100, km: r.mwKm });
-  if (r.otherKwh100 != null && r.otherKm >= min) tpts.autres.push({ T: r.temp, k: r.otherKwh100, km: r.otherKm });
-  if (r.cityKwh100 != null && r.cityKm >= 5) tpts.ville.push({ T: r.temp, k: r.cityKwh100, km: r.cityKm });
-}
-for (const t of trips) {
-  if (!t.wh || t.km < 5) continue;
-  const t0 = Date.parse(t.start), t1 = t0 + t.sec * 1000;
-  if (overlaps(t0, t1, roadsLog) || overlaps(t0, t1, drives)) continue;    // already counted as a followed trip or a drive
-  const T = t.temp ?? tempOf(t0, t1);
-  if (T == null) continue;
-  const kind = kindOf(t);
-  if (kind === 'autoroute' && calib.source !== 'mesure') continue;
-  tpts[kind].push({ T, k: t.wh / 1000 * calib.factor / t.km * 100, km: t.km });
-}
-const tmodel = { autoroute: fitModel(tpts.autoroute, 'autoroute'), autres: fitModel(tpts.autres, 'autres'), ville: fitModel(tpts.ville, 'ville') };
+// consumption vs speed and temperature (D-050): every ~2-minute stretch driven (kept in stretches.json, the readings
+// history keeps 60 days), plus Peugeot trips with a temperature that no stretch covers (computer off), at their
+// average speed, calibrated energy, counted for half (rougher). Fitted from the default settings; the phone uses it
+// once LAW_MIN_KM are measured.
+const law = (() => {
+  const old = readJson('stretches.json', []), last = old.length ? old[old.length - 1].at : 0;
+  const add = stretchesOf(history, BATTERY_KWH, roadsLog).filter((x) => x.at > last);
+  const st = old.concat(add).slice(-30000);
+  if (add.length && !SHOW) writeJson('stretches.json', st);
+  const pts = st.filter((x) => x.T != null);
+  if (calib.source === 'mesure') {
+    for (const t of trips) {
+      if (!t.wh || t.km < 3 || t.temp == null || !t.avgKmh) continue;
+      const t0 = Date.parse(t.start), t1 = t0 + t.sec * 1000;
+      if (st.some((x) => x.at >= t0 && x.at <= t1 + 5 * 60e3) || t0 < (st[0]?.at ?? Infinity)) continue;
+      pts.push({ v: t.avgKmh, T: t.temp, km: t.km / 2, wh: t.wh * calib.factor / 2 });
+    }
+  }
+  const L = fitLaw(groupStretches(pts), priorLaw({}));
+  // usual speeds: on motorway (stretches above 95 km/h) and on other roads (45–95), km-weighted
+  const sp = (lo, hi) => { const q = pts.filter((x) => x.v > lo && x.v <= hi), km = q.reduce((a, x) => a + x.km, 0);
+    return { km: Math.round(km), v: km ? Math.round(km / q.reduce((a, x) => a + x.km / x.v, 0)) : null }; };
+  const M = sp(95, 200), O = sp(45, 95);
+  return { a: L.a, b: L.b, p0: L.p0, h: L.h, km: L.km, kmFast: L.kmFast, tmin: L.tmin, tmax: L.tmax,
+    vM: M.km >= 50 ? M.v : null, vO: O.km >= 50 ? O.v : null };
+})();
 const all = Object.values(groups).reduce((s, g) => ({ km: s.km + g.km, kwh: s.kwh + g.kwh }), { km: 0, kwh: 0 });
 const avg = all.km > 50 ? +(all.kwh / all.km * 100).toFixed(1) : null;
 
@@ -228,7 +229,7 @@ const summary = cur && {
   v: 1, at: now, carAt: cur.carAt, level: cur.level, kwh: kwhOf(cur) != null ? +kwhOf(cur).toFixed(2) : null,
   exactKwh: false, odometer: cur.km, carRange: cur.autonomy, charging: cur.charging, plugged: cur.plugged,
   live, remainingKm, rateUsed: live?.kwh100 || avg || 16, avg, stats, trips: trips.length, calib,
-  tempC: cur.tempC ?? null, tmodel,
+  tempC: cur.tempC ?? null, law,
 };
 
 if (summary) {

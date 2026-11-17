@@ -126,3 +126,32 @@ function unseenDrives(pts, batteryKwh, now, trips) {
   }
   return out;
 }
+
+// Every ~2-minute stretch between two car readings while driving, for the speed + temperature law (D-050):
+// {at (end reading), v (km/h), T (°C), km, wh}. Energy from the car's "residual energy" figure, which moves in ~0.1 %
+// steps (ten times finer than the battery %): converted to real Wh with the slope residual-vs-% seen in the history
+// (≈ 300 residual Wh per 1 % = 460 real Wh on this car). Readings before 2026-11-11 have no temperature: filled from
+// a followed trip covering them (temperature given by Thomas), else left out.
+export function residualScale(history, batteryKwh = 46) {
+  const P = history.filter((p) => p.residualWh != null && p.level != null);
+  const n = P.length, lv = P.map((p) => p.level);
+  if (n < 50 || Math.max(...lv) - Math.min(...lv) < 20) return batteryKwh * 10 / 301.4;
+  let sx = 0, sy = 0, sxx = 0, sxy = 0;
+  for (const p of P) { sx += p.level; sy += p.residualWh; sxx += p.level ** 2; sxy += p.level * p.residualWh; }
+  const slope = (n * sxy - sx * sy) / (n * sxx - sx * sx);
+  return slope > 100 ? batteryKwh * 10 / slope : batteryKwh * 10 / 301.4;
+}
+export function stretchesOf(history, batteryKwh = 46, fills = []) {
+  const F = residualScale(history, batteryKwh), out = [];
+  const pts = history.filter((p) => p.km != null && p.level != null && p.residualWh != null).sort((a, b) => a.at - b.at);
+  const fillT = (t) => fills.find((r) => r.temp != null && r.endAt && t >= r.at && t <= r.endAt)?.temp ?? null;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i], km = b.km - a.km, h = (tOf(b) - tOf(a)) / 3600e3;
+    if (b.at - a.at > OFF || km < 0.05 || b.level > a.level || h <= 0 || a.residualWh < b.residualWh) continue;
+    const ts = [a.tempC, b.tempC].filter((x) => x != null);
+    const T = ts.length ? ts.reduce((x, y) => x + y, 0) / ts.length : fillT(b.at);
+    out.push({ at: b.at, v: +(km / Math.max(h, 1 / 60)).toFixed(1), T: T == null ? null : +T.toFixed(1), km: +km.toFixed(2),
+      wh: Math.round((a.residualWh - b.residualWh) * F) });
+  }
+  return out;
+}

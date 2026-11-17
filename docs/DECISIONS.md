@@ -498,3 +498,27 @@ speed, consumption (from 10 km, "≈" under 20 km), split by road kind. Levels: 
 charging; "🏁 Suivi terminé" gives km, average speed, consumption. Not written to roads.json: the drive is measured
 like any other (D-046), so nothing is counted twice. Checked by replaying the 17 Nov drive: 15 km, 15.9 kWh/100,
 road 10 / town 5 km = drives.json. Every stretch's speed + energy is kept in the history, for the speed law to come.
+
+## D-050 — Consumption as a function of speed and temperature (2026-11-17)
+
+Thomas's idea: one law of speed and temperature instead of three road kinds, so a long drive can tell which speed to
+hold when the margin is low. app/js/law.js: k(v, T) = a + b·ρ(T)·v² + (p0 + h·max(0, 18 − T))·100/v (kWh/100 km;
+ρ = air density vs 18 °C). b (air drag) fixed from the specs (CdA 0.64, 90 % → 0.000914): the measured km are mostly
+20–110 km/h with few km per speed, too little to learn it, and it is the best-known part. a (per-km cost), p0 (power
+always drawn) and h (heating per °C below 18) are fitted by least squares on every ~2-minute stretch driven, pulled
+towards the settings law with a weight of ~100 km (h: stronger pull, needs a spread of temperatures). Energy of each
+stretch from the car's residual-energy figure, ~0.1 % steps, converted with the residual-vs-% slope of the history
+(≈ 300 per 1 % = 460 Wh). Stretches kept for good in stretches.json (history keeps 60 days); readings before
+2026-11-11 had no temperature: filled from roads.json (14 °C given by Thomas). Peugeot trips with a temperature that
+no stretch covers count for half. Starting law from the settings: motorway 18 / 20 (5 °C) at maxSpeed, other roads 15
+at 12 °C / 70 km/h. The phone uses the measured law from 150 km (checkbox "utiliser ma conso mesurée"); the old
+per-kind temperature laws (D-040 fit, D-047 town law) are gone from the app; drives still show motorway/road/town.
+Route plans: motorway rate = law at the measured usual motorway speed (km-weighted, stretches > 95 km/h, if within
+10 km/h of maxSpeed, else maxSpeed − 3), other roads at the measured 45–95 speed (else 70). Followed trips carry the law,
+temperature and usual speed: when the margin is "juste"/"non", the highest motorway speed that reaches the goal with
+the safe margin (reserve + 2 % when it would not make it), the law scaled to this trip's motorway rate, with the
+extra minutes ("En roulant à 95 km/h au lieu de 107 … ≈ +13 min"). Free follow-up: range at 130/110/90/70 km/h and in
+town, the law scaled to this trip (measured vs law per stretch; worse in full, better at most −10 %).
+First fit (352 km, 1–15 °C, 170 km above 95 km/h): a 9.09, p0 1.01 kW, h 0.17 kW/°C → 5 °C: 30 km/h 20.8, 70 km/h 18.4,
+110 km/h 23.6; 15 °C: 15.0 / 15.8 / 21.7. Check: 11 Nov motorway stretches measured 20.1 and 20.7 vs law ≈ 21;
+14 Nov (3 °C) 25.4 vs 23.9. The app shows the table 30–130 km/h × 15/5/0 °C.

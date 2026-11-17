@@ -7,6 +7,7 @@
 // motorway). Good news only counts for the same kind of road; bad news (cold, wind, speed) is applied to both.
 import { cumulative } from './geo.js';
 import { coarsen, extraFn } from './terrain.js';
+import { kwh100, speedFor } from './law.js';
 
 const SAFE_EXTRA = 5;          // % above the reserve for "marge OK"
 const MW_MIN_KM = 25;          // motorway km driven before the measured motorway figure is used
@@ -173,13 +174,26 @@ export function evaluate(trip, pts) {
     const a2 = pctAt(g2.pos);
     if (a2 >= g2.safe) skip = { name: g2.name, pct: a2 };
   }
-  // slowing down: −10 % consumption per 10 km/h less on the motorway (rough)
+  // slowing down on the motorway (D-050): highest steady speed at which the motorway km ahead still let the car reach
+  // the goal with the safe margin, from the speed + temperature law scaled to what this trip measures on the motorway.
+  // Older profiles without the law: rough −10 % per 10 km/h.
   let slow = '';
   if (level !== 'ok') {
-    const needE = energy(p, d, goal.pos, rM, rO, X) + (safe - p.reserve) / 100 * B * (level === 'juste' ? 1 : 0), have = now - resKwh;
-    const f = have / (needE || 1), mwAhead = mwKm(p, d, goal.pos) / Math.max(1, goal.pos - d);
-    if (mwAhead > 0.5 && f >= 0.88 && f < 1) slow = 'En roulant à 100 km/h au lieu de 110 sur l\'autoroute, ça devrait passer (estimation).';
-    else if (mwAhead > 0.5 && f >= 0.78 && f < 1) slow = 'En roulant à 90 km/h sur l\'autoroute, ça pourrait passer (estimation).';
+    // aim: the safe margin when it is only "juste", the reserve + 2 % when the battery would not make it
+    const aim = level === 'juste' ? Math.max(safe, p.reserve) : p.reserve + 2;
+    const mwA = mwKm(p, d, goal.pos), have = now - aim / 100 * B;
+    if (p.law && mwA > 5) {
+      const vM = p.vM || 107, f = rM / kwh100(p.law, vM, p.T ?? 10);       // this trip vs the law at the usual speed
+      const rest = energy(p, d, goal.pos, 0, rO, X);                         // other roads + climbs / wind
+      const v = speedFor(p.law, p.T ?? 10, mwA, have, rest, f, vM);
+      if (v != null && v < vM) slow = `👉 En roulant à ${v} km/h au lieu de ${vM} sur les ${Math.round(mwA)} km d'autoroute restants, vous arrivez avec ≈ ${Math.round(aim)} % (≈ +${Math.max(1, Math.round(mwA * (60 / v - 60 / vM)))} min).`;
+      else if (v == null && level === 'non') slow = 'Même à 70 km/h sur l\'autoroute, la marge ne suffit pas : rechargez.';
+    } else if (!p.law) {
+      const needE = energy(p, d, goal.pos, rM, rO, X) + (safe - p.reserve) / 100 * B * (level === 'juste' ? 1 : 0), have0 = now - resKwh;
+      const f = have0 / (needE || 1), mwAhead = mwA / Math.max(1, goal.pos - d);
+      if (mwAhead > 0.5 && f >= 0.88 && f < 1) slow = 'En roulant à 100 km/h au lieu de 110 sur l\'autoroute, ça devrait passer (estimation).';
+      else if (mwAhead > 0.5 && f >= 0.78 && f < 1) slow = 'En roulant à 90 km/h sur l\'autoroute, ça pourrait passer (estimation).';
+    }
   }
 
   const r0 = (x) => Math.round(x);
@@ -222,7 +236,7 @@ function freeMeasure(trip, pts) {
   // the car's first reading can come a few km after pressing the button: from the odometer at the press (speed unknown)
   if (!all.length || all[0].km - trip.startKm > 0.3) all = [{ km: trip.startKm, level: trip.startLevel, at: trip.startAt, syn: true }, ...all];
   const S = { mw: { km: 0, w: 0, h: 0 }, ot: { km: 0, w: 0, h: 0 }, city: { km: 0, w: 0, h: 0 } };
-  let pct = 0, km = 0, h = 0, mkm = 0, lastMove = trip.startAt;
+  let pct = 0, km = 0, h = 0, mkm = 0, pred = 0, lastMove = trip.startAt;
   // Wh per battery % seen on this trip, for the stretches where a reading lacks the residual figure (the start point)
   let rs = 0, ls = 0;
   for (let i = 1; i < all.length; i++) if (all[i].residualWh != null && all[i - 1].residualWh != null && all[i - 1].level >= all[i].level) { rs += all[i - 1].residualWh - all[i].residualWh; ls += all[i - 1].level - all[i].level; }
@@ -239,11 +253,12 @@ function freeMeasure(trip, pts) {
     const s = S[v > MW_KMH ? 'mw' : v < CITY_KMH ? 'city' : 'ot'];
     s.km += dkm; s.w += Math.max(0, wOf(a, b, dl));
     if (known) { s.h += dh; h += dh; mkm += dkm; }
+    if (p.law) pred += dkm * kwh100(p.law, v, b.tempC ?? p.T ?? 10) / 100;          // what the law expects for this stretch
     pct += dl; km += dkm;
   }
   const kwh = pct / 100 * p.batt, totW = S.mw.w + S.ot.w + S.city.w;
   for (const s of Object.values(S)) s.kwh = totW > 0 ? kwh * s.w / totW : km > 0 ? kwh * s.km / km : 0;
-  return { S, km, kwh, h, lastMove, avgKmh: h > 0.02 ? mkm / h : null };
+  return { S, km, kwh, h, pred, lastMove, avgKmh: h > 0.02 ? mkm / h : null };
 }
 function freeTotals(trip, pts) {
   const m = freeMeasure(trip, pts), r = (s) => (s.km >= 5 ? +(s.kwh / s.km * 100).toFixed(1) : null);
@@ -258,7 +273,7 @@ function evaluateFree(trip, pts) {
   const kC = p.kC ?? p.kO;
   // measured vs what the expected rates give for the same km of each kind: worse counts in full, better at most −10 %
   // (a 1 % battery step is ~0.5 kWh); applied to every kind of road, since the road ahead is unknown
-  const expect = (m.S.mw.km * p.kM + m.S.ot.km * p.kO + m.S.city.km * kC) / 100;
+  const expect = p.law ? m.pred : (m.S.mw.km * p.kM + m.S.ot.km * p.kO + m.S.city.km * kC) / 100;
   const ratio = m.km >= FREE_MIN_KM && expect > 0 ? m.kwh / expect : 1;
   const f = ratio >= 1 ? ratio : Math.max(0.9, 1 + Math.min(1, m.km / 60) * (ratio - 1));
   const left = cur.level / 100 * B - p.reserve / 100 * B;
@@ -268,8 +283,11 @@ function evaluateFree(trip, pts) {
   const title = level === 'ok' ? `✅ Batterie ${cur.level} %` : level === 'juste' ? `⚠️ Batterie basse : ${cur.level} %` : `🛑 Batterie presque vide : ${cur.level} %`;
   const lines = [];
   lines.push(here != null ? `Autonomie jusqu'à ${p.reserve} % : ≈ ${range(here / f)} km au rythme de ce trajet` : `Autonomie jusqu'à ${p.reserve} % : ≈ ${range(p.kO)} km sur route`);
-  lines.push(`Selon la route : autoroute ≈ ${range(p.kM)} km · route ≈ ${range(p.kO)} km · ville ≈ ${range(kC)} km`);
-  if (level !== 'ok') lines.push('👉 Pensez à une borne : ' + (m.S.mw.km > 5 ? 'sur autoroute, rouler à 110 au lieu de 130 consomme environ 20 % de moins.' : 'trouvez-en une proche de votre route.'));
+  // range at a steady speed (D-050): the law at today's temperature, scaled to this trip
+  const T = cur.tempC ?? p.T ?? 10;
+  if (p.law) lines.push('Autonomie selon la vitesse : ' + [130, 110, 90, 70].map((v) => `${v} km/h → ${range(kwh100(p.law, v, T))} km`).join(' · ') + ` · ville → ${range(kwh100(p.law, 30, T))} km`);
+  else lines.push(`Selon la route : autoroute ≈ ${range(p.kM)} km · route ≈ ${range(p.kO)} km · ville ≈ ${range(kC)} km`);
+  if (level !== 'ok') lines.push('👉 Pensez à une borne' + (p.law ? ` : à 90 km/h au lieu de 110, ≈ ${range(kwh100(p.law, 90, T)) - range(kwh100(p.law, 110, T))} km de plus.` : (m.S.mw.km > 5 ? ' : sur autoroute, rouler à 110 au lieu de 130 consomme environ 20 % de moins.' : ' : trouvez-en une proche de votre route.')));
   const kinds = [['autoroute', m.S.mw], ['route', m.S.ot], ['ville', m.S.city]].filter(([, s]) => s.km >= 1);
   lines.push(`${r0(m.km)} km depuis le départ${m.avgKmh ? ` · moyenne ${r0(m.avgKmh)} km/h en roulant` : ''}`
     + (m.km >= 10 ? ` · ${m.km < FREE_MIN_KM ? '≈ ' : ''}${dec1(m.kwh / m.km * 100)} kWh/100 km` : ''));
