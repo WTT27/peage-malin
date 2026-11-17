@@ -269,6 +269,9 @@ if (summary && onTrip) {
     let lastMove = trip.startAt;
     for (let i = 1; i < pts.length; i++) if (pts[i].km - pts[i - 1].km > 0.1) lastMove = Date.parse(pts[i].carAt) || pts[i].at;
     er.done = er.left < -5 || (er.left < 5 && (cur.ignition === 'Stop' || now - lastMove > 8 * 60e3));
+    // free follow-up (no route): ends when the car has not moved for 30 min and is not charging (a charging stop
+    // or a short break keeps it going)
+    if (trip.profile.free) er.done = now - lastMove > 30 * 60e3 && !/progress/i.test(cur.charging || '');
     summary.enroute = { id: trip.id, carAt: cur.carAt, ...er };
   }
 }
@@ -288,7 +291,11 @@ if (er && !SHOW) {
     trip.active = false; trip.endAt = now;
     const tt = tripTotals(trip, history.filter((p) => p.at >= trip.startAt - 60e3 && p.km != null && p.level != null).concat(cur));
     const kw = (x) => String(x).replace('.', ',');
-    await alert('🏁 Arrivé', [`Batterie ${cur.level} %. Suivi terminé.`,
+    if (tt.free) await alert('🏁 Suivi terminé', [`Batterie ${cur.level} %. ${tt.km} km${tt.avgKmh ? `, moyenne ${tt.avgKmh} km/h` : ''}.`,
+      tt.kwh100 != null && tt.km >= 20 ? `Conso : ${kw(tt.kwh100)} kWh/100 km.` : '',
+      [['autoroute', tt.mwKm, tt.mwKwh100], ['route', tt.otherKm, tt.otherKwh100], ['ville', tt.cityKm, tt.cityKwh100]]
+        .filter((x) => x[1] >= 5 && x[2] != null).map(([n, k, c]) => `${n} ${k} km à ${kw(c)}`).join(' · ')].filter(Boolean), 2, ['checkered_flag']);
+    else await alert('🏁 Arrivé', [`Batterie ${cur.level} %. Suivi terminé.`,
       // below 25 km the battery's 1 % steps make the figure meaningless: not shown (still kept, averaged with other trips)
       tt.mwKwh100 != null && tt.mwKm >= 25 ? `Conso réelle sur autoroute : ${kw(tt.mwKwh100)} kWh/100 km (${tt.mwKm} km).` : '',
       tt.otherKwh100 != null && tt.otherKm >= 25 ? `Autres routes : ${kw(tt.otherKwh100)} kWh/100 km (${tt.otherKm} km).` : ''].filter(Boolean), 2, ['checkered_flag']);
@@ -300,6 +307,8 @@ if (er && !SHOW) {
   if (why) state.alert = { id: trip.id, level: er.level, rec: er.rec, mw: er.mwMeasured, d: er.d, at: now };
 }
 // finished trip: keep its real motorway / other-road consumption (used by future route plans, D-039)
+// (a free follow-up has no road profile: its drive is measured like any other drive, D-046)
+if (trip && !trip.active && !trip.saved && !SHOW && trip.profile.free) trip.saved = true;
 if (trip && !trip.active && !trip.saved && !SHOW) {
   const end = trip.endAt || now;
   const pts = history.filter((p) => p.at >= trip.startAt - 60e3 && p.at <= end + 60e3 && p.km != null && p.level != null);

@@ -107,6 +107,7 @@ function measure(p, startKm, pts, windowKm = WINDOW_KM, X = null) {
 }
 // whole trip, at the end: real consumption on motorway and on other roads (from battery % drops), kept for future plans
 export function tripTotals(trip, pts) {
+  if (trip.profile.free) return freeTotals(trip, pts);
   const m = measure(trip.profile, trip.startKm, pts, Infinity, extraOf(trip));
   const r = (g) => (g.km >= 5 ? +(g.kwh / g.km * 100).toFixed(1) : null);
   return { mwKm: Math.round(m.mw.km), mwKwh100: r(m.mw), otherKm: Math.round(m.other.km), otherKwh100: r(m.other) };
@@ -138,6 +139,7 @@ export function extraOf(trip) {
 // ---------- the check ----------
 // trip: {profile, startKm, startLevel, startAt}; pts: readings since departure (the first one may be the departure)
 export function evaluate(trip, pts) {
+  if (trip.profile.free) return evaluateFree(trip, pts);
   const p = trip.profile, cur = pts[pts.length - 1];
   if (!cur || cur.level == null || cur.km == null) return null;
   const all = [{ km: trip.startKm, level: trip.startLevel, at: trip.startAt }, ...pts.filter((x) => x.km != null && x.level != null)];
@@ -204,3 +206,75 @@ export function evaluate(trip, pts) {
     rM: +rM.toFixed(1), rO: +rO.toFixed(1), mwMeasured: mM != null, done: left < 1.5 };
 }
 
+
+// ---------- free follow-up: no route chosen (Thomas, 2026-11-17) ----------
+// One button, no destination: the road ahead is unknown, so there is no "will I make it" — only the battery, the
+// consumption measured since departure, the average speed, and how far the battery goes at that pace.
+// Each stretch between two car readings (~2 min) is classed by its own average speed like the automatic drive
+// measurement (car/drives.mjs, D-047): > 95 km/h motorway, 45–95 road, < 45 town. Energy = the battery % drops,
+// shared between the stretches by the car's finer "residual energy" figure when every reading has it.
+// profile: {free: true, label, batt, reserve, target, kM, kO, kC} (kWh/100 km expected at today's temperature)
+const OFF = 6 * 60e3, MW_KMH = 95, CITY_KMH = 45, FREE_MIN_KM = 20;
+const tOf = (p) => Date.parse(p.kmAt || p.carAt) || p.at;
+function freeMeasure(trip, pts) {
+  const p = trip.profile;
+  let all = pts.filter((x) => x.km != null && x.level != null && x.km >= trip.startKm - 0.05);
+  // the car's first reading can come a few km after pressing the button: from the odometer at the press (speed unknown)
+  if (!all.length || all[0].km - trip.startKm > 0.3) all = [{ km: trip.startKm, level: trip.startLevel, at: trip.startAt, syn: true }, ...all];
+  const S = { mw: { km: 0, w: 0, h: 0 }, ot: { km: 0, w: 0, h: 0 }, city: { km: 0, w: 0, h: 0 } };
+  let pct = 0, km = 0, h = 0, mkm = 0, lastMove = trip.startAt;
+  // Wh per battery % seen on this trip, for the stretches where a reading lacks the residual figure (the start point)
+  let rs = 0, ls = 0;
+  for (let i = 1; i < all.length; i++) if (all[i].residualWh != null && all[i - 1].residualWh != null && all[i - 1].level >= all[i].level) { rs += all[i - 1].residualWh - all[i].residualWh; ls += all[i - 1].level - all[i].level; }
+  const whPct = ls >= 2 && rs > 0 ? rs / ls : null;
+  const wOf = (a, b, dl) => (whPct == null ? dl : a.residualWh != null && b.residualWh != null ? a.residualWh - b.residualWh : dl * whPct);
+  for (let i = 1; i < all.length; i++) {
+    const a = all[i - 1], b = all[i], dkm = b.km - a.km, dl = a.level - b.level;
+    if (dkm > 0.1) lastMove = tOf(b);
+    if (dl < 0 || dkm < 0) continue;                          // charged in between
+    if (dkm < 0.05) { pct += dl; continue; }                  // parked (heating, pre-heating): energy counted, no km
+    const dh = (tOf(b) - tOf(a)) / 3600e3;
+    const known = !a.syn && b.at - a.at <= OFF;                // across a switch-off or from the press: speed unknown → road
+    const v = known && dh > 0 ? dkm / Math.max(dh, 1 / 60) : 60;
+    const s = S[v > MW_KMH ? 'mw' : v < CITY_KMH ? 'city' : 'ot'];
+    s.km += dkm; s.w += Math.max(0, wOf(a, b, dl));
+    if (known) { s.h += dh; h += dh; mkm += dkm; }
+    pct += dl; km += dkm;
+  }
+  const kwh = pct / 100 * p.batt, totW = S.mw.w + S.ot.w + S.city.w;
+  for (const s of Object.values(S)) s.kwh = totW > 0 ? kwh * s.w / totW : km > 0 ? kwh * s.km / km : 0;
+  return { S, km, kwh, h, lastMove, avgKmh: h > 0.02 ? mkm / h : null };
+}
+function freeTotals(trip, pts) {
+  const m = freeMeasure(trip, pts), r = (s) => (s.km >= 5 ? +(s.kwh / s.km * 100).toFixed(1) : null);
+  return { free: true, km: Math.round(m.km), kwh100: m.km >= 5 ? +(m.kwh / m.km * 100).toFixed(1) : null,
+    avgKmh: m.avgKmh && Math.round(m.avgKmh), mwKm: Math.round(m.S.mw.km), mwKwh100: r(m.S.mw),
+    otherKm: Math.round(m.S.ot.km), otherKwh100: r(m.S.ot), cityKm: Math.round(m.S.city.km), cityKwh100: r(m.S.city) };
+}
+function evaluateFree(trip, pts) {
+  const p = trip.profile, cur = pts[pts.length - 1];
+  if (!cur || cur.level == null || cur.km == null) return null;
+  const m = freeMeasure(trip, pts), B = p.batt, r0 = Math.round;
+  const kC = p.kC ?? p.kO;
+  // measured vs what the expected rates give for the same km of each kind: worse counts in full, better at most −10 %
+  // (a 1 % battery step is ~0.5 kWh); applied to every kind of road, since the road ahead is unknown
+  const expect = (m.S.mw.km * p.kM + m.S.ot.km * p.kO + m.S.city.km * kC) / 100;
+  const ratio = m.km >= FREE_MIN_KM && expect > 0 ? m.kwh / expect : 1;
+  const f = ratio >= 1 ? ratio : Math.max(0.9, 1 + Math.min(1, m.km / 60) * (ratio - 1));
+  const left = cur.level / 100 * B - p.reserve / 100 * B;
+  const range = (k) => Math.max(0, r0(left / (k * f) * 100));
+  const here = m.km >= FREE_MIN_KM ? m.kwh / m.km * 100 : null;          // this trip's own figure, mix of roads included
+  const level = cur.level <= p.reserve + 3 ? 'non' : cur.level <= p.reserve + 12 ? 'juste' : 'ok';
+  const title = level === 'ok' ? `✅ Batterie ${cur.level} %` : level === 'juste' ? `⚠️ Batterie basse : ${cur.level} %` : `🛑 Batterie presque vide : ${cur.level} %`;
+  const lines = [];
+  lines.push(here != null ? `Autonomie jusqu'à ${p.reserve} % : ≈ ${range(here / f)} km au rythme de ce trajet` : `Autonomie jusqu'à ${p.reserve} % : ≈ ${range(p.kO)} km sur route`);
+  lines.push(`Selon la route : autoroute ≈ ${range(p.kM)} km · route ≈ ${range(p.kO)} km · ville ≈ ${range(kC)} km`);
+  if (level !== 'ok') lines.push('👉 Pensez à une borne : ' + (m.S.mw.km > 5 ? 'sur autoroute, rouler à 110 au lieu de 130 consomme environ 20 % de moins.' : 'trouvez-en une proche de votre route.'));
+  const kinds = [['autoroute', m.S.mw], ['route', m.S.ot], ['ville', m.S.city]].filter(([, s]) => s.km >= 1);
+  lines.push(`${r0(m.km)} km depuis le départ${m.avgKmh ? ` · moyenne ${r0(m.avgKmh)} km/h en roulant` : ''}`
+    + (m.km >= 10 ? ` · ${m.km < FREE_MIN_KM ? '≈ ' : ''}${dec1(m.kwh / m.km * 100)} kWh/100 km` : ''));
+  if (kinds.length) lines.push(kinds.map(([n, s]) => `${n} ${r0(s.km)} km${s.km >= 5 && m.km >= FREE_MIN_KM ? ` à ${dec1(s.kwh / s.km * 100)}` : ''}`).join(' · '));
+  if (m.km < FREE_MIN_KM) lines.push(`Conso du trajet fiable après ${FREE_MIN_KM} km (la batterie avance par pas de 1 %) : en attendant, conso prévue à ${dec1(p.kO)} sur route, ${dec1(p.kM)} sur autoroute.`);
+  return { level, title, lines, free: true, rec: null, d: r0(m.km), avgKmh: m.avgKmh && r0(m.avgKmh), lastMove: m.lastMove,
+    rangeKm: here != null ? range(here / f) : range(p.kO), mwMeasured: false, done: false };
+}

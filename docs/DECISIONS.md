@@ -482,3 +482,19 @@ town, as the trip statistics); energy from the % shared by the trips' energy fig
 "Ordinateur éteint… chiffres reconstitués". A followed trip with no reading at all is no longer saved as an empty
 roads.json entry (it hid the car's trips of that drive from the temperature law). First case: 16 Nov evening,
 24.9 km, 90→80 %, 18.5 kWh/100 km at 10 °C, other roads.
+
+## D-049 — Battery follow-up without a route (2026-11-17)
+
+Thomas: one button to follow the battery without choosing a route first. "🔋 Suivre ma batterie (sans itinéraire)" in
+the e-208 tab (shown when nothing is followed) sends a `free` profile: no road profile, only battery size, reserve and
+the expected kWh/100 km per kind of road at the outside temperature read on the car (learnt laws, else settings; town
+law or road × 1.1). app/js/enroute.js `evaluateFree()`: each stretch between two readings classed by its own speed
+like D-047 (> 95 / 45–95 / < 45 km/h); the stretch from the button press to the car's first reading has no known speed
+(→ road, left out of the average speed); energy = battery % drops shared by the residual-energy figure (Wh per % of the
+trip itself where a reading lacks it). Shows range to the reserve at this trip's pace (from 20 km) and per kind of road
+(expected rates × measured/expected ratio: worse counts in full, better at most −10 %, as D-037), km, average moving
+speed, consumption (from 10 km, "≈" under 20 km), split by road kind. Levels: ok > reserve + 12 %, juste, non ≤ reserve
++ 3 %. Alerts as followed trips (start, change, every 30 min). Ends by itself after 30 min without moving unless
+charging; "🏁 Suivi terminé" gives km, average speed, consumption. Not written to roads.json: the drive is measured
+like any other (D-046), so nothing is counted twice. Checked by replaying the 17 Nov drive: 15 km, 15.9 kWh/100,
+road 10 / town 5 km = drives.json. Every stretch's speed + energy is kept in the history, for the speed law to come.
