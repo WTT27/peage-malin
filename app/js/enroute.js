@@ -93,7 +93,7 @@ function measure(p, startKm, pts, windowKm = WINDOW_KM, X = null) {
   const out = { mw: { km: 0, kwh: 0 }, other: { km: 0, kwh: 0 } };
   for (let i = pts.length - 1; i > 0; i--) {
     const a = pts[i - 1], b = pts[i];
-    if (b.level > a.level) continue;                      // charged in between
+    if (b.level > a.level && (b.km - a.km < 0.05 || b.level - a.level > 2)) continue; // charged (1–2 % up while moving = regen)
     const da = a.km - startKm, db = b.km - startKm, len = db - da;
     if (len < 0.3) continue;
     // battery used, minus what the climbs / wind of this stretch cost (→ flat, calm-air consumption)

@@ -11,7 +11,7 @@ import { DIR, api, status, digest, readJson, writeJson, log } from './peugeot.mj
 import { evaluate, tripTotals } from '../app/js/enroute.js';
 import { fitLaw, priorLaw, groupStretches } from '../app/js/law.js';
 import { fetchWinds } from '../app/js/terrain.js';
-import { findDrives, stretchesOf } from './drives.mjs';
+import { findDrives, stretchesOf, charged } from './drives.mjs';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -156,7 +156,7 @@ let calib = null;
   let mKm = 0, mKwh = 0, rKwh = 0;
   for (let i = 1; i < pts.length; i++) {
     const a = pts[i - 1], b = pts[i];
-    if (b.level > a.level || b.at - a.at > 6 * 3600e3 || b.km - a.km < 0.5) continue;
+    if (charged(a, b) || b.at - a.at > 6 * 3600e3 || b.km - a.km < 0.5) continue;
     const ts = trips.filter((t) => t.wh && t.startKm != null && t.startKm >= a.km - 0.5 && t.startKm + t.km <= b.km + 0.5);
     const tkm = ts.reduce((x, t) => x + t.km, 0);
     if (tkm < 0.8 * (b.km - a.km)) continue;                        // trips not yet synced for this stretch
@@ -186,7 +186,8 @@ const overlaps = (a0, a1, list) => list.some((r) => r.endAt && a0 < r.endAt && a
 const drives = (() => {
   const old = readJson('drives.json', []), byAt = new Map(old.map((d) => [d.at, d]));
   const add = findDrives(history, BATTERY_KWH, now, trips).filter((d) => !byAt.has(d.at) || d.endAt > byAt.get(d.at).endAt);
-  for (const d of add) byAt.set(d.at, d);
+  // a drive that comes back longer (pieces joined) replaces the pieces it covers
+  for (const d of add) { for (const [k, o] of byAt) if (o.auto && !o.unseen && o.at >= d.at && o.endAt <= d.endAt) byAt.delete(k); byAt.set(d.at, d); }
   const all = [...byAt.values()].sort((a, b) => a.at - b.at).slice(-300);
   if (add.length && !SHOW) { writeJson('drives.json', all); for (const d of add) log('drive measured:', JSON.stringify(d)); }
   return all.filter((d) => !overlaps(d.at, d.endAt, roadsLog));

@@ -16,6 +16,9 @@ const GAP = 25 * 60e3, DONE = 12 * 60e3, MW_KMH = 95, CITY_KMH = 45, MIN_KM = 20
 // start time: when the first point is a parked reading long before the car moved, ~2 min before the first moving one
 const startOf = (L) => (L.length > 1 && L[1].at - L[0].at > OFF ? L[1].at - 120e3 : L[0].at);
 const tOf = (p) => Date.parse(p.kmAt || p.carAt) || p.at;
+// charged between two readings: the battery % went up while parked, or by more than 2 % at once. A 1–2 % rise while
+// moving is regeneration downhill / the rounding of the % (2026-11-18: a 25 km drive was cut into 11.6 + 7 km).
+export const charged = (a, b) => b.level > a.level && (b.km - a.km < 0.05 || b.level - a.level > 2);
 
 export function findDrives(history, batteryKwh = 46, now = Date.now(), trips = []) {
   const pts = history.filter((p) => p.km != null && p.level != null).sort((a, b) => a.at - b.at);
@@ -23,7 +26,7 @@ export function findDrives(history, batteryKwh = 46, now = Date.now(), trips = [
   let g = [];
   for (const p of pts) {
     const q = g[g.length - 1];
-    if (q && (p.at - q.at > GAP || p.level > q.level || p.km < q.km)) {
+    if (q && (p.at - q.at > GAP || charged(q, p) || p.km < q.km)) {
       groups.push(g); g = [];
       // the car sometimes sends its first reading a few km after leaving: start from the last parked reading
       // (same odometer story, no charging since)

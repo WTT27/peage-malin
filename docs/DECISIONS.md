@@ -522,3 +522,11 @@ town, the law scaled to this trip (measured vs law per stretch; worse in full, b
 First fit (352 km, 1–15 °C, 170 km above 95 km/h): a 9.09, p0 1.01 kW, h 0.17 kW/°C → 5 °C: 30 km/h 20.8, 70 km/h 18.4,
 110 km/h 23.6; 15 °C: 15.0 / 15.8 / 21.7. Check: 11 Nov motorway stretches measured 20.1 and 20.7 vs law ≈ 21;
 14 Nov (3 °C) 25.4 vs 23.9. The app shows the table 30–130 km/h × 15/5/0 °C.
+
+## D-051 — A 1–2 % battery rise while moving is not a charge (2026-11-18)
+Thomas: "my last trip was not 7 km but ~25". The battery % went up by 1 twice during the 18 Nov morning drive
+(downhill regeneration / rounding of the %); the drive finder took each rise for a charge and cut the 24.7 km drive
+into 11.6 + 7 km (and dropped the first 2 km). Rule now (`charged()` in car/drives.mjs, also used for the Peugeot
+calibration and the en-route measurement): charged = % up while parked (odometer unchanged), or by more than 2 % at
+once. A longer drive found later replaces the pieces it covers in drives.json. Also rebuilt: 13 Nov 17.5 + 7 → 26.5 km,
+16 Nov 18.2 + 7.1 → 25.9 km (backup drives.json.bak-2026-11-18). sw v36.
