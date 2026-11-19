@@ -286,6 +286,10 @@ if (cmd === 'morning') {
     }
     log('still charging after attempt', i + 1, JSON.stringify(r?.codes || r?.err), after ? 'fresh state ' + after.charging : 'no fresh state');
     car = after || car;
+    // since 13 Nov the car often does not answer at all (code 300 = "the car did not answer"): warn at once (≈ 5:55)
+    // instead of after the 4 tries (≈ 6:25), so the charge can be stopped by hand in MyPeugeot before 6:00
+    if (i === 0) await alert('⚠️ Voiture injoignable pour l\'arrêt de charge', [`Jour ${COLOR[color]} : arrêtez la charge dans l'appli MyPeugeot si possible. Je réessaie jusqu'à 6 h 25.`,
+      'Rappel Peugeot : la voiture doit être fermée à clé pour accepter les commandes à distance.'], red ? 5 : 4, ['warning']);
   }
   remember({ date, action: 'échec', color, level: car.level });
   await alert('⚠️ La charge n\'a pas pu être arrêtée', [`Jour ${COLOR[color]} : arrêtez-la dans l'appli MyPeugeot.`], red ? 5 : 4, ['warning']);
@@ -322,4 +326,11 @@ if (cmd === 'preheat') {
   else await done(false, `La voiture n'a pas confirmé (codes ${r.codes.join(',') || 'aucun'}).${!car.plugged && car.level < 50 ? ' Débranchée, elle refuse souvent sous 50 %.' : ''}`, '⚠️ Préchauffage pas confirmé');
   process.exit(r.ok || on ? 0 : 1);
 }
-console.log('Commandes : setup | check | stop | start | preheat | morning');
+// reachability test: asks the car for its charging state only (no change to the car)
+if (cmd === 'wake') {
+  const t0 = Date.now(), w = await wakeUp();
+  log(`wake test: ${w.ok ? 'awake' : 'no confirmation ' + (w.codes?.join(',') || w.err || '')} in ${Math.round((Date.now() - t0) / 1000)} s`);
+  console.log(w.ok ? '✅ Voiture joignable.' : `❌ Voiture injoignable (codes ${w.codes?.join(',') || w.err})`);
+  process.exit(w.ok ? 0 : 1);
+}
+console.log('Commandes : setup | check | stop | start | preheat | wake | morning');

@@ -530,3 +530,13 @@ into 11.6 + 7 km (and dropped the first 2 km). Rule now (`charged()` in car/driv
 calibration and the en-route measurement): charged = % up while parked (odometer unchanged), or by more than 2 % at
 once. A longer drive found later replaces the pieces it covers in drives.json. Also rebuilt: 13 Nov 17.5 + 7 → 26.5 km,
 16 Nov 18.2 + 7.1 → 25.9 km (backup drives.json.bak-2026-11-18). sw v36.
+
+## D-052 — 6:00 stop failing: the car no longer answers remote commands (2026-11-19)
+charge.log since 13 Nov 06:42 UTC: every wake-up/command ends 900,901,300 (300 = "[Vehicle.request.time.out]": Peugeot
+sent it, the car never answered), at night and by day (test 19 Nov 07:52 Paris, parked, plugged, charge finished → 300).
+The only "success" since then (16 Nov 06:20) was the car waking by itself at 100 %. The car reports by itself only at
+charge start (~22:01), charge end and while driving; no report in between. So the cause is the car side, not our
+messages (same as psa_car_controller). Leads: Peugeot requires the car off, closed and LOCKED for remote commands;
+2G/3G telematics shutdown (Peugeot NZ FAQ, 2026); very slow home charge (~0.8–1 kW, 6 km/h) makes most nights run past 6:00.
+Done: `charge.mjs wake` (reachability test, asks the state only); morning job alerts after the 1st failed try (~5:55)
+instead of ~6:25. Waiting for Thomas: does MyPeugeot's own remote command work? Is the car locked at home?
