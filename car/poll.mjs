@@ -289,7 +289,7 @@ if (cc && !SHOW) {
   }
   state.commute = C;
 }
-if (summary && cc) summary.commute = { name: cc.name || 'Rond-point', last: state.commute?.last || null };
+if (summary && cc) summary.commute = { name: cc.name || 'Rond-point', upTo: cc.joinName || null, last: state.commute?.last || null };
 
 // ---- "En route": battery vs the road still ahead, alerts on <channel>-alerte (ntfy app on the phone) ----
 let er = null;

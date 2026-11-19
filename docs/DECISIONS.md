@@ -552,3 +552,9 @@ fresh < 6 min) stays in memory, only the distance is kept in state.json; the car
 within ~2 min (notification + card). Every check logged in commute.jsonl to compare later with real drive times.
 Baseline 19 Nov evening: usual 9.3 km 13 min, left 10.9 km 16 min; TomTom's 08:45 forecast +4 min on both (its model
 may miss the jam: live mornings will tell). sw v37.
+Update (same day): compared only up to the roundabout where the two roads meet again (end of the avenue, ~5.9 km before
+work; after it the road is shared), usual forced through a point in the middle of the avenue. Free flow: usual 3.4 km
+4.0 min, left 5.1 km 7.7 min, shared end 5.9 km 8.9 min. Real mornings (car readings, km before arrival): usual on
+Mon 16 (roundabout 08:47) 13 min to the join, Thu 19 (08:46) 11 min; Wed 18 at 07:32: 4.8 min. Thu 12 and Fri 13 drives
+were 1.5–1.9 km longer from the same drop-off = the left road (+1.6 km): 8 and 6.4 min to the join (roundabout 08:43).
+Shared end: 10–12 min at ~08:50, 14–15 min at ~09:00. sw v38.
