@@ -540,3 +540,15 @@ messages (same as psa_car_controller). Leads: Peugeot requires the car off, clos
 2G/3G telematics shutdown (Peugeot NZ FAQ, 2026); very slow home charge (~0.8–1 kW, 6 km/h) makes most nights run past 6:00.
 Done: `charge.mjs wake` (reachability test, asks the state only); morning job alerts after the 1st failed try (~5:55)
 instead of ~6:25. Waiting for Thomas: does MyPeugeot's own remote command work? Is the car locked at home?
+
+## D-053 — Morning roundabout advice: straight on or left? (2026-11-19)
+Thomas's commute near 9:00 jams on the usual road; a longer road (2nd exit of the roundabout, D64e) is sometimes faster
+and Google does not offer it. `car/commute.mjs`: both routes asked from TomTom with live traffic, each forced through its
+own waypoints (2 requests), "left" advised when it saves ≥ 2 min. Routes are private: `~/.config/peage-malin-car/commute.json`
+(never in the repo). Triggers: (1) poll.mjs, weekdays 07:00–10:00, car switched on, within 8 km of the roundabout and
+getting closer → ntfy alert (priority 4), a 2nd one only if the advice flips; the car's position (status lastPosition,
+fresh < 6 min) stays in memory, only the distance is kept in state.json; the car is read every 2 min during the window.
+(2) app card « 🚦 » on the Itinéraire tab, button « Quelle route maintenant ? » → {type:'commute'} on -commande, answer
+within ~2 min (notification + card). Every check logged in commute.jsonl to compare later with real drive times.
+Baseline 19 Nov evening: usual 9.3 km 13 min, left 10.9 km 16 min; TomTom's 08:45 forecast +4 min on both (its model
+may miss the jam: live mornings will tell). sw v37.

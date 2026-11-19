@@ -12,6 +12,7 @@ import { evaluate, tripTotals } from '../app/js/enroute.js';
 import { fitLaw, priorLaw, groupStretches } from '../app/js/law.js';
 import { fetchWinds } from '../app/js/terrain.js';
 import { findDrives, stretchesOf, charged } from './drives.mjs';
+import { commuteConf, checkCommute, commuteText, distKm, inWindow } from './commute.mjs';
 
 const SHOW = process.argv.includes('--show');
 const BATTERY_KWH = 46;          // usable capacity used when the car gives no residual energy
@@ -37,6 +38,7 @@ try {
 } catch (e) { log('trip channel error:', e.message); }
 if (trip?.active && now - trip.startAt > 36 * 3600e3) { trip.active = false; trip.endAt = now; }      // forgotten trip
 
+let askCommute = false;
 // ---- 0b. charge stop at 6:00 (D-038): "don't stop tomorrow morning" from the phone, on <channel>-commande ----
 try {
   const txt = await (await fetch(`https://ntfy.sh/${conf.topic}-commande/json?poll=1&since=${state.cmdMsg || '12h'}`)).text();
@@ -47,6 +49,8 @@ try {
     const x = JSON.parse(m.message);
     if (x.type === 'skip' && /^\d{4}-\d\d-\d\d$/.test(x.date)) { state.chargeSkip = x.date; log('charge stop skipped for', x.date); }
     if (x.type === 'unskip') { state.chargeSkip = null; log('charge stop skip cancelled'); }
+    // "which way at the roundabout?" button (D-053): answered below, in the ntfy app and on the card
+    if (x.type === 'commute' && now - (m.time * 1000) < 10 * 60e3) askCommute = true;
     // "start / stop the charge now" buttons: only recent requests (a request older than 10 min is dropped)
     if (x.type === 'charge' && ['start', 'stop', 'preheat'].includes(x.action) && now - (m.time * 1000) < 10 * 60e3 && !SHOW) {
       log('charge', x.action, 'asked from the app');
@@ -72,11 +76,16 @@ if (SHOW || now - (state.lastTempo || 0) > 3600e3) {
 const onTrip = !!trip?.active;
 
 // ---- 1. car status (every 2 min while something moves or a trip is followed, every 10 min when the car is idle) ----
-const idle = now - state.lastChange > 30 * 60e3 && !onTrip;
-let cur = state.last || null;
+// (during the morning commute window the car is read every 2 min too, so the roundabout advice comes in time, D-053)
+const cc = commuteConf();
+const idle = now - state.lastChange > 30 * 60e3 && !onTrip && !(cc && inWindow(cc));
+let cur = state.last || null, pos = null;          // pos: the car's position, kept in memory only (never stored/sent)
 if (SHOW || !idle || now - state.lastCall > 10 * 60e3) {
   try {
-    cur = digest(await status(conf.vehicleId));
+    const raw = await status(conf.vehicleId);
+    cur = digest(raw);
+    const lp = raw.lastPosition, at = Date.parse(lp?.properties?.createdAt || '');
+    if (lp?.geometry?.coordinates && now - at < 6 * 60e3) pos = [lp.geometry.coordinates[1], lp.geometry.coordinates[0]];
     state.lastCall = now;
     const prev = state.last;
     const changed = !prev || cur.km !== prev.km || cur.level !== prev.level || cur.residualWh !== prev.residualWh || cur.charging !== prev.charging;
@@ -251,6 +260,36 @@ if (summary) {
   const rem = readJson('remote.json'), ch = readJson('charge.json', {});
   summary.charge = { active: !!rem, tempo: state.tempo || {}, skip: state.chargeSkip || null, last: ch.last || null, manual: ch.manual || null };
 }
+
+// ---- morning roundabout advice (D-053): straight on (usual road) or left (detour round the jam)? ----
+// Asked automatically when the car, switched on during the commute window, gets within radiusKm of the roundabout and
+// is getting closer (only that distance is kept, never the position); asked any time from the app's button.
+if (cc && !SHOW) {
+  const C = state.commute || {};
+  if (now - (C.seenAt || 0) > 30 * 60e3) { C.d = null; C.sentBest = null; }           // a new approach
+  let why = askCommute ? 'button' : null;
+  if (!why && pos && cur?.ignition !== 'Stop' && inWindow(cc)) {
+    const d = distKm(pos, cc.point);
+    const nearing = d <= (cc.radiusKm || 8) && d > 0.3 && (C.d == null || d < C.d - 0.2);
+    if (d <= (cc.radiusKm || 8) + 2) { C.d = +d.toFixed(2); C.seenAt = now; }
+    if (nearing && now - (C.lastAsk || 0) > 90e3) why = 'near';
+  }
+  if (why) {
+    try {
+      const r = await checkCommute(cc);
+      C.last = r; C.lastAsk = now;
+      // while nearing: one notification, and another only if the advice changes before the roundabout
+      if (why === 'button' || C.sentBest !== r.best) {
+        const t = commuteText(cc, r);
+        await alert(t.title, t.lines, 4, ['vertical_traffic_light']);
+        C.sentBest = why === 'near' ? r.best : C.sentBest;
+        log('commute', why, r.best, r.routes.map((x) => x.id + ' ' + x.min + ' min').join(', '));
+      }
+    } catch (e) { log('commute error:', e.message); }
+  }
+  state.commute = C;
+}
+if (summary && cc) summary.commute = { name: cc.name || 'Rond-point', last: state.commute?.last || null };
 
 // ---- "En route": battery vs the road still ahead, alerts on <channel>-alerte (ntfy app on the phone) ----
 let er = null;
