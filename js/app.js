@@ -172,6 +172,7 @@ async function fetchCar() {
   renderCar();
   renderEnroute();
   renderCharge();
+  renderCommute();
 }
 
 // ---------- charge stopped at 6:00 by the home computer (D-038): always on Tempo red days, else unless asked ----------
@@ -246,6 +247,43 @@ function renderCharge() {
     } catch { alert('Pas de réseau : réessayez.'); }
   };
   for (const a of ['start', 'stop', 'preheat']) { const b = box.querySelector(`[data-a=${a}]`); if (b) b.onclick = () => now2(a); }
+}
+
+// ---------- morning roundabout: straight on or left? (D-053) ----------
+// The home computer asks both roads' live traffic when the button is pressed (answer within ~2 min, also as a
+// notification) and by itself on weekday mornings when the car is switched on near the roundabout.
+let commuteWait = null;
+function renderCommute() {
+  const box = $('commuteCard'), cm = car?.commute;
+  if (!cm || !carTopic()) { box.classList.add('hidden'); return; }
+  const hhmm = (t) => new Date(t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  let pend = null; try { pend = JSON.parse(localStorage.getItem('commutePending') || 'null'); } catch { /* ignore */ }
+  const L = cm.last, P = pend && Date.now() - pend < 6 * 60e3 && !(L && L.at > pend) ? pend : null;
+  let html = `<h2>🚦 ${cm.name}</h2>`;
+  if (L) {
+    const b = L.routes.find((x) => x.id === L.best), o = L.routes.find((x) => x.id !== L.best);
+    const line = (x) => `${x.label} (${x.road}) : <b>${x.min} min</b>${x.delayMin >= 1 ? `, bouchons +${x.delayMin} min` : ''}`;
+    const old = Date.now() - L.at > 30 * 60e3;
+    html += `<p${old ? ' class="old"' : ''}>${old ? 'Dernière vérification' : 'Vérifié'} à ${hhmm(L.at)}${new Date(L.at).toDateString() !== new Date().toDateString() ? ` le ${new Date(L.at).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })}` : ''} : <b>${b.label.toUpperCase()}</b></p>
+      <p class="old">Temps${cm.upTo ? ` jusqu'au ${cm.upTo}` : ''} : ${line(b)} · ${line(o)}</p>`;
+  }
+  html += '<button type="button" data-a="ask">🚦 Quelle route maintenant ?</button>';
+  if (P) html += `<p class="old">⏳ Demandé à ${hhmm(P)} : réponse ici et en notification d'ici 2 min.</p>`;
+  html += '<p class="old">Le matin en semaine, la notification arrive toute seule quand la voiture démarre près du rond-point.</p>';
+  box.className = 'card chargecard';
+  box.innerHTML = html;
+  box.querySelector('[data-a=ask]').onclick = async () => {
+    try {
+      const r = await fetch(`https://ntfy.sh/${carTopic()}-commande`, { method: 'POST', body: JSON.stringify({ type: 'commute' }) });
+      if (!r.ok) throw new Error();
+      try { localStorage.setItem('commutePending', JSON.stringify(Date.now())); } catch { /* ignore */ }
+      renderCommute();
+      // look for the answer every 20 s for 5 min
+      clearInterval(commuteWait);
+      const t0 = Date.now();
+      commuteWait = setInterval(() => { if (Date.now() - t0 > 5 * 60e3) clearInterval(commuteWait); else fetchCar(); }, 20e3);
+    } catch { alert('Pas de réseau : réessayez.'); }
+  };
 }
 
 // ---------- "En route": battery vs the road still ahead while driving a planned trip (D-037) ----------
